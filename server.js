@@ -8,7 +8,7 @@ const PORT = process.env.PORT || 4000;
 app.use(cors());
 app.use(express.json());
 
-// 🔹 Endpoint: Obtener capacidades (corregido para eliminar duplicados)
+// 🔹 Endpoint: Obtener capacidades (100% corregido)
 app.get('/capacidades', async (req, res) => {
   const { destino, transporte } = req.query;
 
@@ -18,13 +18,13 @@ app.get('/capacidades', async (req, res) => {
 
   try {
     const result = await pool.query(`
-      SELECT capacidad
+      SELECT TRIM(UPPER(capacidad)) AS capacidad
       FROM tarifas_destinos
       WHERE UPPER(destino) = UPPER($1)
         AND UPPER(tipo_transporte) = UPPER($2)
         AND activo = true
-      GROUP BY capacidad
-      ORDER BY capacidad
+      GROUP BY TRIM(UPPER(capacidad))
+      ORDER BY TRIM(UPPER(capacidad))
     `, [destino, transporte]);
 
     // 🔥 Devolver array plano y eliminar duplicados en caso extremo
