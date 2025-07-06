@@ -1,6 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import pool from './conexion.js'; // ✅ Asegúrate de que este archivo esté bien configurado
+import pool from './conexion.js';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -26,7 +26,9 @@ app.get('/capacidades', async (req, res) => {
       ORDER BY capacidad
     `, [destino, transporte]);
 
-    res.json(result.rows);
+    // 🔥 Devolver array plano
+    const capacidades = result.rows.map(row => row.capacidad);
+    res.json(capacidades);
   } catch (err) {
     console.error('❌ Error al consultar capacidades:', err.message);
     res.status(500).json({ error: 'Error en la base de datos' });
@@ -72,7 +74,9 @@ app.get('/hoteles', async (req, res) => {
       ORDER BY nombre_hotel
     `);
 
-    res.json(result.rows);
+    // 🔥 Devolver array plano
+    const hoteles = result.rows.map(row => row.nombre_hotel);
+    res.json(hoteles);
   } catch (err) {
     console.error('❌ Error al consultar hoteles:', err.message);
     res.status(500).json({ error: 'Error en la base de datos' });
