@@ -1,4 +1,5 @@
 import pool from './conexion.js';
+import { enviarCorreoDestino } from './correoDestino.js'; // ✅ Se importa la nueva función
 
 export default async function guardarDestino(req, res) {
   const datos = req.body;
@@ -62,9 +63,30 @@ export default async function guardarDestino(req, res) {
     ]);
 
     console.log("✅ Reserva insertada con folio:", nuevoFolio);
+
+    // ✅ Enviar correo después de insertar
+    await enviarCorreoDestino({
+      folio: nuevoFolio,
+      tipo_viaje: datos.tipo_viaje,
+      destino: datos.destino,
+      tipo_transporte: datos.transporte,
+      capacidad: datos.capacidad,
+      hotel_llegada: datos.hotel,
+      fecha_llegada: datos.fecha,
+      hora_llegada: datos.hora,
+      nombre_cliente: datos.nombre,
+      correo_cliente: datos.correo,
+      telefono_cliente: telefonoCompleto,
+      cantidad_pasajeros: datos.pasajeros,
+      nota: datos.comentarios,
+      total_pago: precioLimpio
+    });
+
+    console.log("✅ Correo de destino enviado correctamente");
+
     res.status(200).json({ exito: true, folio: nuevoFolio });
   } catch (err) {
-    console.error("❌ Error al insertar reserva:", err);
+    console.error("❌ Error al insertar reserva o enviar correo:", err);
     res.status(500).json({ error: "Error interno al guardar" });
   }
 }
