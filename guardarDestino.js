@@ -1,5 +1,5 @@
 import pool from './conexion.js';
-import { enviarCorreoDestino } from './correoDestino.js'; // ✅ Se importa la nueva función
+import { enviarCorreoDestino } from './correoDestino.js'; // ✅ Se importa la función de correo
 
 export default async function guardarDestino(req, res) {
   const datos = req.body;
@@ -32,7 +32,7 @@ export default async function guardarDestino(req, res) {
     // Limpiar precio
     const precioLimpio = parseFloat(String(datos.precio).replace(/[^\d.]/g, ""));
 
-    // Insertar la reserva
+    // Insertar la reserva (sin guardar imágenes)
     await pool.query(`
       INSERT INTO reservaciones
       (folio, nombre_tour, tipo_servicio, estatus, tipo_transporte,
@@ -79,7 +79,9 @@ export default async function guardarDestino(req, res) {
       telefono_cliente: telefonoCompleto,
       cantidad_pasajeros: datos.pasajeros,
       nota: datos.comentarios,
-      total_pago: precioLimpio
+      total_pago: precioLimpio,
+      imagenDestino: datos.imagenDestino || '',
+      imagenTransporte: datos.imagenTransporte || ''
     });
 
     console.log("✅ Correo de destino enviado correctamente");

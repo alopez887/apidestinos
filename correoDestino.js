@@ -77,6 +77,9 @@ export async function enviarCorreoDestino(datos) {
         <p><strong>Total:</strong> $${safeToFixed(datos.total_pago)} USD</p>
         ${datos.nota && datos.nota.trim() !== '' ? `<p><strong>Note:</strong> ${datos.nota}</p>` : ''}
 
+        ${datos.imagenDestino ? `<p><img src="${datos.imagenDestino}" alt="Destination Image" style="border-radius:8px;max-width:100%;margin-top:20px;" /></p>` : ''}
+        ${datos.imagenTransporte ? `<p><img src="${datos.imagenTransporte}" alt="Transport Image" style="border-radius:8px;max-width:100%;margin-top:20px;" /></p>` : ''}
+
         <div style="background-color:#fff3cd;border-left:6px solid #ffa500;padding:10px 15px;margin-top:20px;border-radius:5px;">
           <strong style="color:#b00000;">⚠ Recommendations:</strong>
           <span style="color:#333;"> Please confirm your reservation at least 24 hours in advance to avoid any inconvenience.</span>
