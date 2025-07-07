@@ -25,19 +25,21 @@ export default async function guardarDestino(req, res) {
       nuevoFolio = `D-${num.toString().padStart(7, '0')}`;
     }
 
-    // Limpiar precio (sólo número)
+    // Concatenar teléfono completo
+    const telefonoCompleto = `${datos.codigoPais}${datos.telefono}`;
+
+    // Limpiar precio
     const precioLimpio = parseFloat(String(datos.precio).replace(/[^\d.]/g, ""));
 
     // Insertar la reserva
-    const resultado = await pool.query(`
+    await pool.query(`
       INSERT INTO reservaciones
       (folio, nombre_tour, tipo_servicio, estatus, tipo_transporte,
       nombre_cliente, correo_cliente, nota, fecha,
       capacidad, cantidad_pasajeros, hotel_llegada, hotel_salida,
-      fecha_salida, hora_salida, precio_servicio, tipo_viaje, total_pago)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW(),
-      $9,$10,$11,$12,$13,$14,$15,$16,$17)
-      RETURNING id
+      fecha_salida, hora_salida, precio_servicio, tipo_viaje, total_pago, telefono_cliente)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8, NOW() AT TIME ZONE 'America/Mazatlan',
+      $9,$10,$11,$12,$13,$14,$15,$16,$17, $18)
     `, [
       nuevoFolio,
       datos.destino,
@@ -55,10 +57,11 @@ export default async function guardarDestino(req, res) {
       datos.hora,
       precioLimpio,
       datos.tipo_viaje,
-      precioLimpio  // ← Aquí agregamos total_pago igual al precio limpio
+      precioLimpio,
+      telefonoCompleto
     ]);
 
-    console.log("✅ Reserva insertada con ID:", resultado.rows[0].id, "y folio:", nuevoFolio);
+    console.log("✅ Reserva insertada con folio:", nuevoFolio);
     res.status(200).json({ exito: true, folio: nuevoFolio });
   } catch (err) {
     console.error("❌ Error al insertar reserva:", err);
