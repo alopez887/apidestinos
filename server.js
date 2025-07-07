@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import pool from './conexion.js';
+import guardarDestino from './guardarDestino.js'; // ✅ Nueva importación
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -8,7 +9,7 @@ const PORT = process.env.PORT || 4000;
 app.use(cors());
 app.use(express.json());
 
-// 🔹 Endpoint: Obtener capacidades (100% corregido)
+// 🔹 Endpoint: Obtener capacidades
 app.get('/capacidades', async (req, res) => {
   const { destino, transporte } = req.query;
 
@@ -27,7 +28,6 @@ app.get('/capacidades', async (req, res) => {
       ORDER BY TRIM(UPPER(capacidad))
     `, [destino, transporte]);
 
-    // 🔥 Devolver array plano y eliminar duplicados en caso extremo
     const capacidades = result.rows.map(row => row.capacidad);
     const capacidadesUnicas = [...new Set(capacidades)];
     res.json(capacidadesUnicas);
@@ -76,7 +76,6 @@ app.get('/hoteles', async (req, res) => {
       ORDER BY nombre_hotel
     `);
 
-    // 🔥 Devolver array plano
     const hoteles = result.rows.map(row => row.nombre_hotel);
     res.json(hoteles);
   } catch (err) {
@@ -84,6 +83,9 @@ app.get('/hoteles', async (req, res) => {
     res.status(500).json({ error: 'Error en la base de datos' });
   }
 });
+
+// 🔹 Endpoint: Guardar destino (nuevo)
+app.post('/guardar-destino', guardarDestino);
 
 // ✅ Prueba de conexión
 app.get('/', (req, res) => {
