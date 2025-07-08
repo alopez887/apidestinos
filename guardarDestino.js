@@ -19,11 +19,11 @@ export default async function guardarDestino(req, res) {
       LIMIT 1
     `);
 
-    let nuevoFolio = 'D-0000001';
+    let nuevoFolio = 'D-000001';
     if (resultFolio.rows.length > 0) {
       const lastFolio = resultFolio.rows[0].folio;
       const num = parseInt(lastFolio.split('-')[1]) + 1;
-      nuevoFolio = `D-${num.toString().padStart(7, '0')}`;
+      nuevoFolio = `D-${num.toString().padStart(6, '0')}`; // ✅ Solo 6 dígitos
     }
 
     // Concatenar teléfono completo
