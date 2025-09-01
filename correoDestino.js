@@ -2,7 +2,7 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
-import { generarQRTicket, generarQRDataUrl } from './generarQR.js';
+import { generarQRDestino, generarQRDataUrl } from './generarQR.js';
 
 const GAS_URL = process.env.GAS_URL;
 const GAS_TOKEN = process.env.GAS_TOKEN;
@@ -145,23 +145,25 @@ export async function enviarCorreoDestino(datos = {}) {
     const logo = await inlineLogo();
     const logoCid = logo?.cid || GEN_CID('logoEmpresa');
 
-    let destinoCid = GEN_CID('imagenDestino');
-    let transporteCid = GEN_CID('imagenTransporte');
+    const destinoCid = GEN_CID('imagenDestino');
+    const transporteCid = GEN_CID('imagenTransporte');
+
     const attDestino = (() => {
       const u = forceJpgIfWix(sanitizeUrl(datos.imagenDestino || ''));
       return u ? { url: u, filename: 'destino.jpg', cid: destinoCid, inline: true } : null;
     })();
+
     const attTransp = (() => {
       const u = forceJpgIfWix(sanitizeUrl(datos.imagenTransporte || ''));
       return u ? { url: u, filename: 'transporte.jpg', cid: transporteCid, inline: true } : null;
     })();
 
-    // QR opcional
+    // QR opcional (token de destino)
     let qrAttachment = null;
-    let qrCid = GEN_CID('tokenQR');
+    const qrCid = GEN_CID('tokenQR');
     if (datos.token_qr) {
       try {
-        const dataUrl = await generarQRTicket(datos.token_qr, { size: 320, margin: 1 });
+        const dataUrl = await generarQRDestino(datos.token_qr, { size: 320, margin: 1 });
         const base64 = String(dataUrl).replace(/^data:[^;]+;base64,/, '').replace(/\s+/g,'');
         qrAttachment = { data: base64, mimeType: 'image/png', filename: 'qr.png', cid: qrCid, inline: true };
       } catch (e) {
@@ -174,7 +176,10 @@ export async function enviarCorreoDestino(datos = {}) {
     const fecha  = firstNonNil(datos.fecha, datos.fecha_llegada);
     const hora   = fmtHora12(firstNonNil(datos.hora, datos.hora_llegada));
     const totalN = moneyNum(datos.total_pago);
-    const totalH = totalN != null ? `<p style="margin:2px 0;line-height:1.35;"><strong>Total:</strong> $${totalN.toFixed(2)} USD</p>` : '';
+
+    const totalH = totalN != null
+      ? `<p style="margin:2px 0;line-height:1.35;"><strong>Total:</strong> $${totalN.toFixed(2)} USD</p>`
+      : '';
 
     // ---------- HTML (tabla 600px, spacing Outlook-friendly) ----------
     const html = `
