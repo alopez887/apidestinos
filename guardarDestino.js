@@ -1,3 +1,5 @@
+// guardarDestino.js (versión ajustada con token QR de 40 chars y total normalizado)
+import crypto from 'crypto';
 import pool from './conexion.js';
 import { enviarCorreoDestino } from './correoDestino.js';
 
@@ -9,13 +11,18 @@ function moneyNum(v){
   const n = Number(s);
   return Number.isFinite(n) ? n : null;
 }
+// Token de 40 caracteres hex (20 bytes) — mismo estilo que transporte
+function genTokenQR(){
+  return crypto.randomBytes(20).toString('hex');
+}
 
 export default async function guardarDestino(req, res) {
-  const datos = req.body;
+  const datos = req.body || {};
   console.log("📥 Datos recibidos en guardarDestino:", datos);
 
-  if (!datos || !datos.destino || !datos.nombre || !datos.correo) {
-    return res.status(400).json({ error: "Faltan datos requeridos" });
+  // Validaciones básicas
+  if (!datos.destino || !datos.nombre || !datos.correo) {
+    return res.status(400).json({ error: "Faltan datos requeridos (destino, nombre, correo)" });
   }
 
   try {
@@ -31,9 +38,12 @@ export default async function guardarDestino(req, res) {
     let nuevoFolio = 'D-000001';
     if (resultFolio.rows.length > 0) {
       const lastFolio = resultFolio.rows[0].folio;
-      const num = parseInt(lastFolio.split('-')[1], 10) + 1;
+      const num = parseInt((lastFolio || 'D-000000').split('-')[1], 10) + 1;
       nuevoFolio = `D-${num.toString().padStart(6, '0')}`;
     }
+
+    // 🔐 Token para QR (40 chars hex)
+    const tokenQR = genTokenQR();
 
     // ☎ Teléfono completo
     const telefonoCompleto = `${datos.codigoPais || ''}${datos.telefono || ''}`.trim();
@@ -45,39 +55,42 @@ export default async function guardarDestino(req, res) {
       return res.status(400).json({ error: "total_pago inválido", recibido: totalRaw });
     }
 
-    // 🗃 Insertar (sin imágenes)
+    // 🗃 Insertar (incluyendo columna toquen_qr)
     await pool.query(`
       INSERT INTO reservaciones
       (folio, nombre_tour, tipo_servicio, estatus, tipo_transporte,
        nombre_cliente, correo_cliente, nota, fecha,
        capacidad, cantidad_pasajeros, hotel_llegada, hotel_salida,
-       fecha_salida, hora_salida, precio_servicio, tipo_viaje, total_pago, telefono_cliente)
+       fecha_salida, hora_salida, precio_servicio, tipo_viaje, total_pago,
+       telefono_cliente, toquen_qr)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8, NOW() AT TIME ZONE 'America/Mazatlan',
-              $9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+              $9,$10,$11,$12,$13,$14,$15,$16,$17,
+              $18, $19)
     `, [
-      nuevoFolio,
-      datos.destino,          // nombre_tour
-      datos.tipo_viaje,       // tipo_servicio (así lo usas)
-      1,                      // estatus
-      datos.transporte,       // tipo_transporte
-      datos.nombre,           // nombre_cliente
-      datos.correo,           // correo_cliente
-      datos.comentarios || '',// nota
-      datos.capacidad,
-      datos.pasajeros,
-      datos.hotel,            // hotel_llegada
-      datos.hotel,            // hotel_salida (mismo valor)
-      datos.fecha,            // fecha_salida
-      datos.hora,             // hora_salida
-      totalNum,               // precio_servicio
-      datos.tipo_viaje,
-      totalNum,               // total_pago  ✅ ya numérico
-      telefonoCompleto
+      nuevoFolio,                 // folio
+      datos.destino,              // nombre_tour
+      datos.tipo_viaje,           // tipo_servicio
+      1,                          // estatus
+      datos.transporte,           // tipo_transporte
+      datos.nombre,               // nombre_cliente
+      datos.correo,               // correo_cliente
+      datos.comentarios || '',    // nota
+      datos.capacidad,            // capacidad
+      datos.pasajeros,            // cantidad_pasajeros
+      datos.hotel,                // hotel_llegada
+      datos.hotel,                // hotel_salida
+      datos.fecha,                // fecha_salida
+      datos.hora,                 // hora_salida
+      totalNum,                   // precio_servicio
+      datos.tipo_viaje,           // tipo_viaje
+      totalNum,                   // total_pago
+      telefonoCompleto,           // telefono_cliente
+      tokenQR                     // toquen_qr (guardado en BD)
     ]);
 
     console.log("✅ Reserva insertada con folio:", nuevoFolio);
 
-    // 📧 Enviar correo con el mismo total normalizado
+    // 📧 Enviar correo con el mismo total y el token para generar el QR
     await enviarCorreoDestino({
       folio: nuevoFolio,
       tipo_viaje: datos.tipo_viaje,
@@ -92,13 +105,14 @@ export default async function guardarDestino(req, res) {
       telefono_cliente: telefonoCompleto,
       cantidad_pasajeros: datos.pasajeros,
       nota: datos.comentarios,
-      total_pago: totalNum,                 // ✅ clave que usa el correo
+      total_pago: totalNum,
       imagenDestino: datos.imagenDestino || '',
-      imagenTransporte: datos.imagenTransporte || ''
+      imagenTransporte: datos.imagenTransporte || '',
+      token_qr: tokenQR // 🔑 dispara la generación del QR en el correo
     });
 
     console.log("✅ Correo de destino enviado correctamente");
-    res.status(200).json({ exito: true, folio: nuevoFolio });
+    res.status(200).json({ exito: true, folio: nuevoFolio, toquen_qr: tokenQR });
 
   } catch (err) {
     console.error("❌ Error al insertar reserva o enviar correo:", err);
