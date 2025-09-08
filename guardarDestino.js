@@ -1,4 +1,4 @@
-// guardarDestino.js (corrige a: tocken_qr)
+// guardarDestino.js (usa columna DB: token_qr)
 import crypto from 'crypto';
 import pool from './conexion.js';
 import { enviarCorreoDestino } from './correoDestino.js';
@@ -11,7 +11,7 @@ function moneyNum(v){
   const n = Number(s);
   return Number.isFinite(n) ? n : null;
 }
-function genTokenQR(){ return crypto.randomBytes(20).toString('hex'); } // 40 hex chars
+function genTokenQR(){ return crypto.randomBytes(20).toString('hex'); } // 40 chars
 
 export default async function guardarDestino(req, res) {
   const datos = req.body || {};
@@ -33,8 +33,8 @@ export default async function guardarDestino(req, res) {
 
     let nuevoFolio = 'D-000001';
     if (resultFolio.rows.length > 0) {
-      const lastFolio = resultFolio.rows[0].folio;
-      const num = parseInt((lastFolio || 'D-000000').split('-')[1], 10) + 1;
+      const lastFolio = resultFolio.rows[0].folio || 'D-000000';
+      const num = parseInt(lastFolio.split('-')[1], 10) + 1;
       nuevoFolio = `D-${num.toString().padStart(6, '0')}`;
     }
 
@@ -44,21 +44,21 @@ export default async function guardarDestino(req, res) {
     // Teléfono completo
     const telefonoCompleto = `${datos.codigoPais || ''}${datos.telefono || ''}`.trim();
 
-    // Total normalizado
+    // Total normalizado (acepta total | total_pago | precio | monto)
     const totalRaw = firstNonNil(datos.total, datos.total_pago, datos.precio, datos.monto);
     const totalNum = moneyNum(totalRaw);
     if (totalNum == null) {
       return res.status(400).json({ error: "total_pago inválido", recibido: totalRaw });
     }
 
-    // INSERT: usa la columna correcta: tocken_qr
+    // INSERT: usa la columna correcta: token_qr
     await pool.query(`
       INSERT INTO reservaciones
       (folio, nombre_tour, tipo_servicio, estatus, tipo_transporte,
        nombre_cliente, correo_cliente, nota, fecha,
        capacidad, cantidad_pasajeros, hotel_llegada, hotel_salida,
        fecha_salida, hora_salida, precio_servicio, tipo_viaje, total_pago,
-       telefono_cliente, tocken_qr)
+       telefono_cliente, token_qr)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8, NOW() AT TIME ZONE 'America/Mazatlan',
               $9,$10,$11,$12,$13,$14,$15,$16,$17,
               $18, $19)
@@ -81,12 +81,12 @@ export default async function guardarDestino(req, res) {
       datos.tipo_viaje,           // tipo_viaje
       totalNum,                   // total_pago
       telefonoCompleto,           // telefono_cliente
-      tokenQR                     // ✅ tocken_qr (BD)
+      tokenQR                     // ✅ token_qr (BD)
     ]);
 
     console.log("✅ Reserva insertada con folio:", nuevoFolio);
 
-    // Enviar correo (la clave esperada por correoDestino.js es token_qr)
+    // Enviar correo (correoDestino espera token_qr)
     await enviarCorreoDestino({
       folio: nuevoFolio,
       tipo_viaje: datos.tipo_viaje,
@@ -104,11 +104,11 @@ export default async function guardarDestino(req, res) {
       total_pago: totalNum,
       imagenDestino: datos.imagenDestino || '',
       imagenTransporte: datos.imagenTransporte || '',
-      token_qr: tokenQR // ✅ dispara la inclusión del QR en el correo
+      token_qr: tokenQR // 🔑 activa el QR en el correo
     });
 
     console.log("✅ Correo de destino enviado correctamente");
-    res.status(200).json({ exito: true, folio: nuevoFolio, tocken_qr: tokenQR });
+    res.status(200).json({ exito: true, folio: nuevoFolio, token_qr: tokenQR });
 
   } catch (err) {
     console.error("❌ Error al insertar reserva o enviar correo:", err);
