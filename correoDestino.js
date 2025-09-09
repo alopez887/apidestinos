@@ -2,14 +2,20 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
-import { generarQRDestino, generarQRDataUrl } from './generarQR.js';
+import { generarQRDestino } from './generarQR.js';
 
-const GAS_URL = process.env.GAS_URL;
-const GAS_TOKEN = process.env.GAS_TOKEN;
+const GAS_URL        = process.env.GAS_URL;
+const GAS_TOKEN      = process.env.GAS_TOKEN;
 const GAS_TIMEOUT_MS = Number(process.env.GAS_TIMEOUT_MS || 15000);
 
 const EMAIL_DEBUG = /^(1|true|yes)$/i.test(String(process.env.EMAIL_DEBUG || ''));
 const DBG = (...a) => { if (EMAIL_DEBUG) console.log('[MAIL][destino]', ...a); };
+
+// === ICONOS COMO ENTIDADES (sin emojis directos) ===
+const ICO_CHECK = '&#9989;';    // ✅
+const ICO_WARN  = '&#9888;';    // ⚠
+const ICO_MAIL  = '&#128231;';  // 📧
+const ICO_PIN   = '&#128204;';  // 📌
 
 // ---------- utils ----------
 const _fmt = (v) => (v === 0 ? '0' : (v ?? '—'));
@@ -100,15 +106,7 @@ async function postJSON(url, body, timeoutMs) {
   }
 }
 
-// ---------- contenido estático ----------
-const politicasHTML = `
-  <div style="margin-top:16px;padding-top:10px;border-top:1px solid #e5e9f0;font-size:13px;color:#555;">
-    <strong>📌 Cancellation Policy:</strong><br>
-    - All cancellations or refund requests are subject to a 10% fee of the total amount paid.<br>
-    <strong>- No refunds will be issued for cancellations made less than 24 hours in advance or in case of no-shows.</strong>
-  </div>
-`;
-
+// ---------- estilos ----------
 const EMAIL_CSS = `
 <style>
   .body-cts { font-family: Arial, Helvetica, sans-serif; color:#222; }
@@ -120,7 +118,7 @@ const EMAIL_CSS = `
   }
 </style>`;
 
-// cache simple del logo
+// ---------- logo ----------
 let _logoCache = null;
 async function inlineLogo() {
   if (_logoCache) return _logoCache;
@@ -128,6 +126,15 @@ async function inlineLogo() {
   _logoCache = { url, filename: 'logo.png', cid: GEN_CID('logoEmpresa'), inline: true };
   return _logoCache;
 }
+
+// ---------- bloque de políticas (con entidad en vez de emoji) ----------
+const politicasHTML = `
+  <div style="margin-top:16px;padding-top:10px;border-top:1px solid #e5e9f0;font-size:13px;color:#555;">
+    <strong>${ICO_PIN} Cancellation Policy:</strong><br>
+    - All cancellations or refund requests are subject to a 10% fee of the total amount paid.<br>
+    <strong>- No refunds will be issued for cancellations made less than 24 hours in advance or in case of no-shows.</strong>
+  </div>
+`;
 
 export async function enviarCorreoDestino(datos = {}) {
   try {
@@ -145,7 +152,7 @@ export async function enviarCorreoDestino(datos = {}) {
     const logo = await inlineLogo();
     const logoCid = logo?.cid || GEN_CID('logoEmpresa');
 
-    const destinoCid = GEN_CID('imagenDestino');
+    const destinoCid    = GEN_CID('imagenDestino');
     const transporteCid = GEN_CID('imagenTransporte');
 
     const attDestino = (() => {
@@ -158,7 +165,7 @@ export async function enviarCorreoDestino(datos = {}) {
       return u ? { url: u, filename: 'transporte.jpg', cid: transporteCid, inline: true } : null;
     })();
 
-    // QR opcional (token de destino)
+    // QR opcional
     let qrAttachment = null;
     const qrCid = GEN_CID('tokenQR');
     if (datos.token_qr) {
@@ -181,7 +188,7 @@ export async function enviarCorreoDestino(datos = {}) {
       ? `<p style="margin:2px 0;line-height:1.35;"><strong>Total:</strong> $${totalN.toFixed(2)} USD</p>`
       : '';
 
-    // ---------- HTML (tabla 600px, spacing Outlook-friendly) ----------
+    // ---------- HTML con ENTIDADES (sin emojis literales) ----------
     const html = `
       ${EMAIL_CSS}
       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" class="body-cts">
@@ -193,7 +200,7 @@ export async function enviarCorreoDestino(datos = {}) {
                   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0 0 8px 0;">
                     <tr>
                       <td align="left" style="vertical-align:middle;">
-                        <h2 style="color:green;margin:0;">✅ Destination Reservation Confirmed</h2>
+                        <h2 style="color:green;margin:0;">${ICO_CHECK} Destination Reservation Confirmed</h2>
                       </td>
                       <td align="right" style="vertical-align:middle;">
                         <img src="cid:${logoCid}" width="180" class="logoimg" alt="Logo" />
@@ -245,12 +252,12 @@ export async function enviarCorreoDestino(datos = {}) {
                   <div class="divider" style="border-top:1px solid #e5e9f0;margin:12px 0;"></div>
 
                   <div style="background:#fff8e6;border-left:6px solid #ffa500;padding:10px 14px;border-radius:6px;">
-                    <strong style="color:#b00000;">⚠ Recommendations:</strong>
+                    <strong style="color:#b00000;">${ICO_WARN} Recommendations:</strong>
                     <span style="color:#333;"> Please confirm your reservation at least 24 hours in advance to avoid any inconvenience.</span>
                   </div>
 
                   <p style="margin-top:12px;font-size:14px;color:#555;">
-                    📩 Confirmation sent to: <a href="mailto:${_fmt(datos.correo_cliente)}">${_fmt(datos.correo_cliente)}</a>
+                    ${ICO_MAIL} Confirmation sent to: <a href="mailto:${_fmt(datos.correo_cliente)}">${_fmt(datos.correo_cliente)}</a>
                   </p>
 
                   ${politicasHTML}
@@ -261,7 +268,7 @@ export async function enviarCorreoDestino(datos = {}) {
         </tr>
       </table>`;
 
-    // ---------- Adjuntos a GAS ----------
+    // ---------- payload GAS ----------
     const attachments = [
       ...(logo ? [logo] : []),
       ...(attDestino ? [attDestino] : []),
