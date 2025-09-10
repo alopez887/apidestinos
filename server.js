@@ -3,6 +3,8 @@ import express from 'express';
 import cors from 'cors';
 import pool from './conexion.js';
 import guardarDestino from './guardarDestino.js'; // ✅ Mantiene tu flujo actual
+import loginUsuario from './loginUsuario.js';
+
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -100,6 +102,8 @@ app.get('/hoteles', async (_req, res) => {
 
 // 🔹 Endpoint: Guardar destino (nuevo)
 app.post('/guardar-destino', guardarDestino);
+
+app.post('/api/login-usuario', loginUsuario);
 
 // ✅ Healthcheck
 app.get('/', (_req, res) => {
