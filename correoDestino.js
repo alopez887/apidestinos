@@ -200,7 +200,7 @@ export async function enviarCorreoDestino(datos = {}) {
                   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0 0 8px 0;">
                     <tr>
                       <td align="left" style="vertical-align:middle;">
-                        <h2 style="color:green;margin:0;">${ICO_CHECK} Destination Reservation Confirmed</h2>
+                        <h2 style="color:green;margin:0;">${ICO_CHECK} Tours Reservation Confirmed</h2>
                       </td>
                       <td align="right" style="vertical-align:middle;">
                         <img src="cid:${logoCid}" width="180" class="logoimg" alt="Logo" />
@@ -208,7 +208,7 @@ export async function enviarCorreoDestino(datos = {}) {
                     </tr>
                   </table>
 
-                  <p class="section-title" style="margin:12px 0 6px;">Reservation Information</p>
+                  <p class="section-title" style="margin:12px 0 6px;"><strong>Reservation Information</strong></p>
                   <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
                     <tr><td style="font-size:14px;color:#222;">
                       <p style="margin:2px 0;line-height:1.35;"><strong>Folio:</strong> ${_fmt(datos.folio)}</p>

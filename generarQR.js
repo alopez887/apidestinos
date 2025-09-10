@@ -12,7 +12,7 @@ export async function generarQRDestino(
   { size = 320, margin = 1 } = {}
 ) {
   if (!token) throw new Error('generarQRDestino: token requerido');
-  const url = `${BASE_URL}/login?token=${encodeURIComponent(token)}&type=destino`;
+  const url = `${BASE_URL}/login?token=${encodeURIComponent(token)}&type=tours`;
   try {
     return await QRCode.toDataURL(url, { width: size, margin });
   } catch (error) {
