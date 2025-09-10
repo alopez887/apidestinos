@@ -51,6 +51,10 @@ export default async function guardarDestino(req, res) {
       return res.status(400).json({ error: "total_pago inválido", recibido: totalRaw });
     }
 
+    // 🔵 Normalizaciones pedidas
+    const tipoServicio = 'Tours';                            // ✅ siempre "Tours"
+    const tipoViaje    = firstNonNil(datos.tipo_viaje, 'Tours'); // ✅ default "Tours"
+
     // INSERT: usa la columna correcta: token_qr
     await pool.query(`
       INSERT INTO reservaciones
@@ -65,7 +69,7 @@ export default async function guardarDestino(req, res) {
     `, [
       nuevoFolio,                 // folio
       datos.destino,              // nombre_tour
-      datos.tipo_viaje,           // tipo_servicio
+      tipoServicio,               // ✅ tipo_servicio = 'Tours' (ANTES: datos.tipo_viaje)
       1,                          // estatus
       datos.transporte,           // tipo_transporte
       datos.nombre,               // nombre_cliente
@@ -78,10 +82,10 @@ export default async function guardarDestino(req, res) {
       datos.fecha,                // fecha_salida
       datos.hora,                 // hora_salida
       totalNum,                   // precio_servicio
-      datos.tipo_viaje,           // tipo_viaje
+      tipoViaje,                  // ✅ tipo_viaje = 'Tours' (o lo que venga, pero default 'Tours')
       totalNum,                   // total_pago
       telefonoCompleto,           // telefono_cliente
-      tokenQR                     // ✅ token_qr (BD)
+      tokenQR                     // token_qr (BD)
     ]);
 
     console.log("✅ Reserva insertada con folio:", nuevoFolio);
@@ -89,7 +93,7 @@ export default async function guardarDestino(req, res) {
     // Enviar correo (correoDestino espera token_qr)
     await enviarCorreoDestino({
       folio: nuevoFolio,
-      tipo_viaje: datos.tipo_viaje,
+      tipo_viaje: tipoViaje,          // ✅ coherente con lo insertado
       destino: datos.destino,
       tipo_transporte: datos.transporte,
       capacidad: datos.capacidad,
