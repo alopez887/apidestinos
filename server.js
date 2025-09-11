@@ -4,7 +4,7 @@ import cors from 'cors';
 import pool from './conexion.js';
 import guardarDestino from './guardarDestino.js'; // ✅ Mantiene tu flujo actual
 import loginUsuario from './loginUsuario.js';
-import { obtenerReservaTours } from './obtenerReservaTours.js';
+import obtenerReservaTours from './obtenerReservaTours.js'; // ✅ NUEVO import
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -107,7 +107,8 @@ app.post('/guardar-destino', guardarDestino);
 // 🔹 Login usuarios (iframe envía x-www-form-urlencoded)
 app.post('/api/login-usuario', loginUsuario);
 
-app.get('/api/obtener-reserva-tours', obtenerReservaTours);
+// 🔹 Obtener reserva por token (T O U R S)
+app.get('/api/obtener-reserva-tours', obtenerReservaTours); // ✅ NUEVA ruta oficial
 
 // ✅ Healthcheck
 app.get('/', (_req, res) => {

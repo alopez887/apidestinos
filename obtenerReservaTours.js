@@ -10,7 +10,9 @@ export async function obtenerReservaTours(req, res) {
   try {
     const query = `
       SELECT 
-        folio, tipo_viaje, tipo_transporte, zona, capacidad,
+        folio, tipo_viaje, tipo_transporte,
+        zona AS nombre_tour,              -- 👈 alias para exponer el nombre del tour
+        capacidad,
         cantidad_pasajeros, codigo_descuento, total_pago, nombre_cliente, correo_cliente, 
         telefono_cliente, nota, fecha_llegada, hora_llegada, aerolinea_llegada, vuelo_llegada,
         fecha_salida, hora_salida, aerolinea_salida, vuelo_salida, tipo_servicio, 
