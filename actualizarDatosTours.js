@@ -1,156 +1,99 @@
 import pool from './conexion.js';
-import { DateTime } from 'luxon';
+import { DateTime } from 'luxon'; // si no lo usas, puedes quitarlo
 
+// ✅ Tours: solo chofer interno, columnas *_destino
 export default async function actualizarDatosTours(req, res) {
-  const {
-    token_qr,
-    folio,
-    tipo_viaje,
-    representante_llegada,
-    representante_salida,
-    chofer_nombre,
-    unit,
-    comentarios,
-    fecha_inicioviaje,
-    fecha_finalviaje,
-    cantidad_pasajerosok,
-    firma_cliente,
-    chofer_externonombre,
-    choferexterno_tel,
-    chofer_empresaext
-  } = req.body;
-
-  if (!token_qr && !folio) {
-    return res.status(400).json({ success: false, message: 'Falta identificador: token_qr o folio' });
-  }
-
-  const tipoViajeBase =
-    tipo_viaje === 'redondo_llegada' ? 'llegada' :
-    tipo_viaje === 'redondo_salida'  ? 'salida'  :
-    tipo_viaje === 'shuttle'         ? 'llegada' :
-    tipo_viaje;
-
-  const tiposValidos = ['llegada', 'salida', 'shuttle'];
-  // 🔧 FIX: validar contra tipoViajeBase (normalizado)
-  if (!tipoViajeBase || !tiposValidos.includes(tipoViajeBase)) {
-    return res.status(400).json({ success: false, message: 'Tipo de viaje inválido' });
-  }
-
   try {
+    const {
+      token_qr,
+      folio,                    // opcional
+      representante_destino,    // string
+      chofer_nombre,            // interno
+      unit,                     // numero unidad
+      comentarios,              // texto
+      fecha_inicioviaje,        // ISO string (opcional)
+      fecha_finalviaje,         // ISO string (opcional)
+      cantidad_pasajerosok      // numero
+    } = req.body || {};
+
+    if (!token_qr && !folio) {
+      return res.status(400).json({ success: false, message: 'Falta identificador: token_qr o folio' });
+    }
+
     const identificador      = token_qr || folio;
     const campoIdentificador = token_qr ? 'token_qr' : 'folio';
-    const campoEstatus       = `estatus_viaje${tipoViajeBase}`;
-    const sufijo             = tipoViajeBase;
 
-    const checkQuery = `
-      SELECT estatus_viajellegada, estatus_viajesalida
-      FROM reservaciones
-      WHERE ${campoIdentificador} = $1
-    `;
-    const checkRes = await pool.query(checkQuery, [identificador]);
-
-    if (checkRes.rows.length === 0) {
+    // existe la reserva?
+    const chk = await pool.query(
+      `SELECT 1 FROM reservaciones WHERE ${campoIdentificador} = $1 LIMIT 1`,
+      [identificador]
+    );
+    if (chk.rowCount === 0) {
       return res.status(404).json({ success: false, message: 'Reservación no encontrada' });
-    }
-
-    const estatusLlegada = checkRes.rows[0].estatus_viajellegada;
-    const estatusSalida  = checkRes.rows[0].estatus_viajesalida;
-
-    if (estatusLlegada === 'finalizado' && estatusSalida === 'finalizado') {
-      return res.status(400).json({ success: false, message: 'Este servicio ya fue finalizado completamente y no se puede modificar.' });
-    }
-
-    if ((tipo_viaje === 'llegada' || tipo_viaje === 'redondo_llegada' || tipo_viaje === 'shuttle') && estatusLlegada === 'finalizado') {
-      return res.status(400).json({ success: false, message: 'La llegada ya fue finalizada y no se puede modificar.' });
-    }
-
-    if ((tipo_viaje === 'salida' || tipo_viaje === 'redondo_salida') && estatusSalida === 'finalizado') {
-      return res.status(400).json({ success: false, message: 'La salida ya fue finalizada y no se puede modificar.' });
     }
 
     const updates = [];
     const values  = [];
-    let paramIndex = 1;
+    let i = 1;
+    const push = (frag, val) => { updates.push(frag.replace('?', `$${i++}`)); values.push(val); };
+
+    // --- SOLO columnas DESTINO ---
+    if (representante_destino !== undefined)
+      push('representante_destino = ?', representante_destino?.toString().trim() || null);
+
+    if (comentarios !== undefined)
+      push('comentariosdestino = ?', comentarios?.toString().trim() || null);
+
+    if (unit !== undefined)
+      push('numero_unidaddestino = ?', (unit === '' || unit === null) ? null : unit.toString().trim());
+
+    if (cantidad_pasajerosok !== undefined)
+      push('cantidad_pasajerosokdestino = ?', (cantidad_pasajerosok === '' || cantidad_pasajerosok === null) ? null : Number(cantidad_pasajerosok));
+
+    // Fechas -> estatus_viajedestino
     let estatusViaje = null;
-
-    const setCampo = (campoBase, valor) => {
-      if (valor === undefined) return;
-      const campo = `${campoBase}${sufijo}`;
-      updates.push(`${campo} = $${paramIndex++}`);
-      values.push(valor);
-    };
-
-    if (tipoViajeBase === 'llegada' && representante_llegada !== undefined) {
-      updates.push(`representante_llegada = $${paramIndex++}`);
-      values.push(representante_llegada);
-    }
-    if (tipoViajeBase === 'salida' && representante_salida !== undefined) {
-      updates.push(`representante_salida = $${paramIndex++}`);
-      values.push(representante_salida);
-    }
-
-    setCampo('comentarios', comentarios);
-    setCampo('firma_cliente', firma_cliente);
-    setCampo('cantidad_pasajerosok', cantidad_pasajerosok);
-
     if (fecha_inicioviaje) {
-      const fechaInicio = DateTime.fromISO(fecha_inicioviaje).setZone('America/Mazatlan').toISO();
-      setCampo('fecha_inicioviaje', fechaInicio);
+      const iso = DateTime.fromISO(fecha_inicioviaje).isValid
+        ? DateTime.fromISO(fecha_inicioviaje).toISO()
+        : new Date(fecha_inicioviaje).toISOString();
+      push('fecha_inicioviajedestino = ?', iso);
       estatusViaje = 'asignado';
     }
-
     if (fecha_finalviaje) {
-      const fechaFin = DateTime.fromISO(fecha_finalviaje).setZone('America/Mazatlan').toISO();
-      setCampo('fecha_finalviaje', fechaFin);
+      const iso = DateTime.fromISO(fecha_finalviaje).isValid
+        ? DateTime.fromISO(fecha_finalviaje).toISO()
+        : new Date(fecha_finalviaje).toISOString();
+      push('fecha_finalviajedestino = ?', iso);
       estatusViaje = 'finalizado';
     }
-
     if (estatusViaje) {
-      updates.push(`${campoEstatus} = $${paramIndex++}`);
-      values.push(estatusViaje);
+      push('estatus_viajedestino = ?', estatusViaje);
     }
 
-    if (chofer_externonombre && choferexterno_tel && chofer_empresaext) {
-      updates.push(`chofer_externonombre = $${paramIndex++}`);
-      updates.push(`choferexterno_tel   = $${paramIndex++}`);
-      updates.push(`chofer_empresaext   = $${paramIndex++}`);
-      values.push(chofer_externonombre, choferexterno_tel, chofer_empresaext);
-
-      updates.push(`chofer${sufijo} = NULL`);
-
-      if (unit !== undefined && unit !== null && unit !== '') {
-        setCampo('numero_unidad', unit);
-      } else {
-        updates.push(`numero_unidad${sufijo} = NULL`);
-      }
-    } else {
-      setCampo('chofer', chofer_nombre);
-      setCampo('numero_unidad', unit);
-
-      updates.push(`chofer_externonombre = NULL`);
-      updates.push(`choferexterno_tel    = NULL`);
-      updates.push(`chofer_empresaext    = NULL`);
-    }
+    // Chofer interno SIEMPRE; chofer externo SIEMPRE NULL
+    if (chofer_nombre !== undefined)
+      push('choferdestino = ?', (chofer_nombre === '' || chofer_nombre === null) ? null : chofer_nombre.toString().trim());
+    updates.push('chofer_externonombre = NULL');
+    updates.push('choferexterno_tel = NULL');
+    updates.push('chofer_empresaext = NULL');
 
     if (updates.length === 0) {
       return res.status(400).json({ success: false, message: 'No se recibieron campos para actualizar' });
     }
 
-    const whereClause = `${campoIdentificador} = $${paramIndex}`;
+    const whereParam = `$${i}`;
     values.push(identificador);
 
-    const query = `
+    const sql = `
       UPDATE reservaciones
-      SET ${updates.join(', ')}
-      WHERE ${whereClause}
+      SET ${updates.join(', ')}, updated_at = NOW()
+      WHERE ${campoIdentificador} = ${whereParam}
     `;
+    await pool.query(sql, values);
 
-    await pool.query(query, values);
-
-    res.json({ success: true, message: 'Datos actualizados correctamente' });
-
-  } catch (error) {
-    console.error('❌ Error en actualizarDatosTransporte:', error);
-    res.status(500).json({ success: false, message: 'Error en el servidor' });
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('❌ actualizarDatosTours error:', err);
+    return res.status(500).json({ success: false, message: 'Error en el servidor' });
   }
 }
