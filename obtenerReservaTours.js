@@ -1,6 +1,6 @@
 import pool from './conexion.js';
 
-export async function obtenerReservaTransporte(req, res) {
+export async function obtenerReservaTours(req, res) {
   const { token } = req.query;
 
   if (!token) {
