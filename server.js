@@ -4,6 +4,7 @@ import cors from 'cors';
 import pool from './conexion.js';
 import guardarDestino from './guardarDestino.js'; // ✅ Mantiene tu flujo actual
 import loginUsuario from './loginUsuario.js';
+import { obtenerReservaTours } from './obtenerReservaTours.js';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -105,6 +106,8 @@ app.post('/guardar-destino', guardarDestino);
 
 // 🔹 Login usuarios (iframe envía x-www-form-urlencoded)
 app.post('/api/login-usuario', loginUsuario);
+
+app.get('/api/obtener-reserva-tours', obtenerReservaTours);
 
 // ✅ Healthcheck
 app.get('/', (_req, res) => {
