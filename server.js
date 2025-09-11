@@ -110,6 +110,8 @@ app.post('/api/login-usuario', loginUsuario);
 // 🔹 Obtener reserva por token (T O U R S)
 app.get('/api/obtener-reserva-tours', obtenerReservaTours); // ✅ NUEVA ruta oficial
 
+app.post('/api/actualizar-datos-tours', actualizarDatosTours);
+
 // ✅ Healthcheck
 app.get('/', (_req, res) => {
   res.send('API Destinos activa 🎯');
