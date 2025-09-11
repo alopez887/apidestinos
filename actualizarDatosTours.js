@@ -1,7 +1,7 @@
+// actualizarDatosTours.js — SIN luxon
 import pool from './conexion.js';
-import { DateTime } from 'luxon'; // si no lo usas, puedes quitarlo
 
-// ✅ Tours: solo chofer interno, columnas *_destino
+// Tours: solo chofer interno, columnas *_destino
 export default async function actualizarDatosTours(req, res) {
   try {
     const {
@@ -52,19 +52,23 @@ export default async function actualizarDatosTours(req, res) {
 
     // Fechas -> estatus_viajedestino
     let estatusViaje = null;
+    const toISO = (v) => {
+      try { return new Date(v).toISOString(); } catch { return null; }
+    };
+
     if (fecha_inicioviaje) {
-      const iso = DateTime.fromISO(fecha_inicioviaje).isValid
-        ? DateTime.fromISO(fecha_inicioviaje).toISO()
-        : new Date(fecha_inicioviaje).toISOString();
-      push('fecha_inicioviajedestino = ?', iso);
-      estatusViaje = 'asignado';
+      const iso = toISO(fecha_inicioviaje);
+      if (iso) {
+        push('fecha_inicioviajedestino = ?', iso);
+        estatusViaje = 'asignado';
+      }
     }
     if (fecha_finalviaje) {
-      const iso = DateTime.fromISO(fecha_finalviaje).isValid
-        ? DateTime.fromISO(fecha_finalviaje).toISO()
-        : new Date(fecha_finalviaje).toISOString();
-      push('fecha_finalviajedestino = ?', iso);
-      estatusViaje = 'finalizado';
+      const iso = toISO(fecha_finalviaje);
+      if (iso) {
+        push('fecha_finalviajedestino = ?', iso);
+        estatusViaje = 'finalizado';
+      }
     }
     if (estatusViaje) {
       push('estatus_viajedestino = ?', estatusViaje);

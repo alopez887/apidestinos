@@ -22,7 +22,7 @@ export async function obtenerReservaTours(req, res) {
         tipo_viaje,
         tipo_transporte,
 
-        -- 👇 SOLO este campo para el nombre del tour
+        -- 👇 nombre del tour (no inventamos nada)
         nombre_tour,
 
         -- Capacidad / pax / cobro
@@ -92,7 +92,7 @@ export async function obtenerReservaTours(req, res) {
 
     const reserva = rows[0];
 
-    // Marcas de finalizado (se conserva la lógica existente)
+    // Lógica de finalización por tramo (conservada)
     const tipoViaje = String(reserva.tipo_viaje || '').toLowerCase();
     const respuesta = { success: true, reserva };
 
@@ -116,7 +116,7 @@ export async function obtenerReservaTours(req, res) {
 
     return res.json(respuesta);
   } catch (err) {
-    console.error('❌ Error al obtener reserva (tours):', err);
+    console.error('❌ Error al obtener reserva (tours/destino):', err);
     return res.status(500).json({ success: false, error: 'Error interno del servidor' });
   }
 }

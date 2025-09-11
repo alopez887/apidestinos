@@ -2,30 +2,30 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import pool from './conexion.js';
-import guardarDestino from './guardarDestino.js'; // ✅ Mantiene tu flujo actual
+import guardarDestino from './guardarDestino.js'; // si ya lo usas, se queda
 import loginUsuario from './loginUsuario.js';
-import { obtenerReservaTours } from './obtenerReservaTours.js';
-import actualizarDatosTours from './actualizarDatosTours.js';
+import { obtenerReservaTours } from './obtenerReservaTours.js'; // export con nombre
+import actualizarDatosTours from './actualizarDatosTours.js';   // export default
 
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-// Recomendado en Railway/Heroku para IP real
+// Proxy/IP real (Railway/Heroku)
 app.set('trust proxy', 1);
 
 // Middlewares
 app.use(cors());
 app.use(express.json({ limit: '2mb' }));
-app.use(express.urlencoded({ extended: false })); // ✅ NUEVO: soporta x-www-form-urlencoded (iframe login)
+app.use(express.urlencoded({ extended: false })); // para x-www-form-urlencoded (iframe login)
 
-// 🔹 Endpoint: Obtener capacidades
+// ======= Endpoints varios que ya tenías =======
+
+// Capacidades
 app.get('/capacidades', async (req, res) => {
   const { destino, transporte } = req.query;
-
   if (!destino || !transporte) {
     return res.status(400).json({ error: 'Faltan parámetros (destino y transporte)' });
   }
-
   try {
     const result = await pool.query(
       `
@@ -39,7 +39,6 @@ app.get('/capacidades', async (req, res) => {
       `,
       [destino, transporte]
     );
-
     const capacidades = result.rows.map(r => r.capacidad);
     const capacidadesUnicas = [...new Set(capacidades)];
     res.json(capacidadesUnicas);
@@ -49,14 +48,12 @@ app.get('/capacidades', async (req, res) => {
   }
 });
 
-// 🔹 Endpoint: Obtener precio
+// Precio
 app.get('/precio', async (req, res) => {
   const { destino, transporte, capacidad } = req.query;
-
   if (!destino || !transporte || !capacidad) {
     return res.status(400).json({ error: 'Faltan parámetros (destino, transporte y capacidad)' });
   }
-
   try {
     const result = await pool.query(
       `
@@ -70,7 +67,6 @@ app.get('/precio', async (req, res) => {
       `,
       [destino, transporte, capacidad]
     );
-
     if (result.rows.length > 0) {
       res.json({ precio: result.rows[0].precio });
     } else {
@@ -82,7 +78,7 @@ app.get('/precio', async (req, res) => {
   }
 });
 
-// 🔹 Endpoint: Obtener hoteles
+// Hoteles
 app.get('/hoteles', async (_req, res) => {
   try {
     const result = await pool.query(
@@ -93,7 +89,6 @@ app.get('/hoteles', async (_req, res) => {
       ORDER BY nombre_hotel
       `
     );
-
     const hoteles = result.rows.map(r => r.nombre_hotel);
     res.json(hoteles);
   } catch (err) {
@@ -102,18 +97,17 @@ app.get('/hoteles', async (_req, res) => {
   }
 });
 
-// 🔹 Endpoint: Guardar destino (nuevo)
+// Guardar destino (si ya lo usas)
 app.post('/guardar-destino', guardarDestino);
 
-// 🔹 Login usuarios (iframe envía x-www-form-urlencoded)
+// Login (iframe)
 app.post('/api/login-usuario', loginUsuario);
 
-// 🔹 Obtener reserva por token (T O U R S)
-app.get('/api/obtener-reserva-tours', obtenerReservaTours); // ✅ NUEVA ruta oficial
+// ======= Rutas canónicas para TOURS (manteniendo nombre “destino”) =======
+app.get('/api/obtener-reserva-destino', obtenerReservaTours);
+app.post('/api/actualizar-datos-destino', actualizarDatosTours);
 
-app.post('/api/actualizar-datos-tours', actualizarDatosTours);
-
-// ✅ Healthcheck
+// Healthcheck
 app.get('/', (_req, res) => {
   res.send('API Destinos activa 🎯');
 });
