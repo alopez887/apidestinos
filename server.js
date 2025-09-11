@@ -4,7 +4,7 @@ import cors from 'cors';
 import pool from './conexion.js';
 import guardarDestino from './guardarDestino.js'; // ✅ Mantiene tu flujo actual
 import loginUsuario from './loginUsuario.js';
-import obtenerReservaTours from './obtenerReservaTours.js'; // ✅ NUEVO import
+import { obtenerReservaTours } from './obtenerReservaTours.js';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
