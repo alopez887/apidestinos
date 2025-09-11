@@ -5,6 +5,7 @@ import pool from './conexion.js';
 import guardarDestino from './guardarDestino.js'; // ✅ Mantiene tu flujo actual
 import loginUsuario from './loginUsuario.js';
 import { obtenerReservaTours } from './obtenerReservaTours.js';
+import actualizarDatosTours from './actualizarDatosTours.js';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
