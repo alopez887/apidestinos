@@ -1,53 +1,99 @@
+// obtenerReservaTours.js
 import pool from './conexion.js';
 
 export async function obtenerReservaTours(req, res) {
   const { token } = req.query;
 
   if (!token) {
-    return res.status(400).json({ error: 'Token requerido' });
+    return res.status(400).json({ success: false, error: 'Token requerido' });
   }
 
   try {
     const query = `
-      SELECT 
-        folio, tipo_viaje, tipo_transporte,
-        zona AS nombre_tour,              -- 👈 alias para exponer el nombre del tour
+      SELECT
+        -- Identificación / cliente
+        folio,
+        nombre_cliente,
+        correo_cliente,
+        telefono_cliente,
+
+        -- Servicio
+        tipo_servicio,
+        tipo_viaje,
+        tipo_transporte,
+
+        -- 👇 SOLO este campo para el nombre del tour
+        nombre_tour,
+
+        -- Capacidad / pax / cobro
         capacidad,
-        cantidad_pasajeros, codigo_descuento, total_pago, nombre_cliente, correo_cliente, 
-        telefono_cliente, nota, fecha_llegada, hora_llegada, aerolinea_llegada, vuelo_llegada,
-        fecha_salida, hora_salida, aerolinea_salida, vuelo_salida, tipo_servicio, 
-        porcentaje_descuento, precio_servicio, fecha, estatus, proveedor,
-        -- folio_proveedor eliminado
+        cantidad_pasajeros,
+        total_pago,
+        precio_servicio,
+        porcentaje_descuento,
+        codigo_descuento,
 
-        hotel_llegada, hotel_salida,
+        -- Hoteles y fechas/horas
+        hotel_llegada,
+        fecha_llegada,
+        hora_llegada,
+        aerolinea_llegada,
+        vuelo_llegada,
 
-        -- Llegada
-        representante_llegada, fecha_inicioviajellegada, fecha_finalviajellegada, 
-        comentariosllegada, firma_clientellegada, choferllegada, numero_unidadllegada, 
-        estatus_viajellegada, cantidad_pasajerosokllegada,
+        hotel_salida,
+        fecha_salida,
+        hora_salida,
+        aerolinea_salida,
+        vuelo_salida,
 
-        -- Salida
-        representante_salida, fecha_inicioviajesalida, fecha_finalviajesalida, 
-        comentariossalida, firma_clientesalida, chofersalida, numero_unidadsalida, 
-        estatus_viajesalida, cantidad_pasajerosoksalida,
+        -- Estado general
+        estatus,
+        nota,
+        proveedor,
 
-        -- Chofer externo
-        chofer_externonombre, choferexterno_tel, chofer_empresaext
+        -- Llegada (legacy)
+        representante_llegada,
+        fecha_inicioviajellegada,
+        fecha_finalviajellegada,
+        comentariosllegada,
+        firma_clientellegada,
+        choferllegada,
+        numero_unidadllegada,
+        estatus_viajellegada,
+        cantidad_pasajerosokllegada,
 
+        -- Salida (legacy)
+        representante_salida,
+        fecha_inicioviajesalida,
+        fecha_finalviajesalida,
+        comentariossalida,
+        firma_clientesalida,
+        chofersalida,
+        numero_unidadsalida,
+        estatus_viajesalida,
+        cantidad_pasajerosoksalida,
+
+        -- Chofer externo (si aplica)
+        chofer_externonombre,
+        choferexterno_tel,
+        chofer_empresaext,
+
+        -- token eco
+        token_qr
       FROM reservaciones
       WHERE token_qr = $1
       LIMIT 1
     `;
 
-    const result = await pool.query(query, [token]);
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Reserva no encontrada' });
+    const { rows } = await pool.query(query, [token]);
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Reserva no encontrada' });
     }
 
-    const reserva = result.rows[0];
+    const reserva = rows[0];
 
-    const tipoViaje = reserva.tipo_viaje?.toLowerCase();
+    // Marcas de finalizado (se conserva la lógica existente)
+    const tipoViaje = String(reserva.tipo_viaje || '').toLowerCase();
     const respuesta = { success: true, reserva };
 
     if (tipoViaje === 'llegada' && reserva.estatus_viajellegada === 'finalizado') {
@@ -56,7 +102,7 @@ export async function obtenerReservaTours(req, res) {
         representante: reserva.representante_llegada,
         fecha_inicio: reserva.fecha_inicioviajellegada,
         chofer: reserva.choferllegada,
-        fecha_final: reserva.fecha_finalviajellegada
+        fecha_final: reserva.fecha_finalviajellegada,
       };
     } else if (tipoViaje === 'salida' && reserva.estatus_viajesalida === 'finalizado') {
       respuesta.finalizado = true;
@@ -64,14 +110,13 @@ export async function obtenerReservaTours(req, res) {
         representante: reserva.representante_salida,
         fecha_inicio: reserva.fecha_inicioviajesalida,
         chofer: reserva.chofersalida,
-        fecha_final: reserva.fecha_finalviajesalida
+        fecha_final: reserva.fecha_finalviajesalida,
       };
     }
 
     return res.json(respuesta);
-
-  } catch (error) {
-    console.error("❌ Error al obtener reserva por token:", error);
-    return res.status(500).json({ error: 'Error interno del servidor' });
+  } catch (err) {
+    console.error('❌ Error al obtener reserva (tours):', err);
+    return res.status(500).json({ success: false, error: 'Error interno del servidor' });
   }
 }
