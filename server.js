@@ -104,8 +104,8 @@ app.post('/guardar-destino', guardarDestino);
 app.post('/api/login-usuario', loginUsuario);
 
 // ======= Rutas canónicas para TOURS (manteniendo nombre “destino”) =======
-app.get('/api/obtener-reserva-destino', obtenerReservaTours);
-app.post('/api/actualizar-datos-destino', actualizarDatosTours);
+app.get('/api/obtener-reserva-tours', obtenerReservaTours);
+app.post('/api/actualizar-datos-tours', actualizarDatosTours);
 
 // Healthcheck
 app.get('/', (_req, res) => {
