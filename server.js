@@ -1,27 +1,31 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
+
 import pool from './conexion.js';
-import guardarDestino from './guardarDestino.js'; // si ya lo usas, se queda
+import guardarDestino from './guardarDestino.js';
 import loginUsuario from './loginUsuario.js';
-import { obtenerReservaTours } from './obtenerReservaTours.js'; // export con nombre
-import actualizarDatosTours from './actualizarDatosTours.js';   // export default
-import guardarFirmaTours from './firmas/guardarFirmaTours.js';
+import { obtenerReservaTours } from './obtenerReservaTours.js';
+import actualizarDatosTours from './actualizarDatosTours.js';
+import guardarFirmaTours from './firmas/guardarFirmaTours.js'; // <- este es el handler correcto
 
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-// Proxy/IP real (Railway/Heroku)
+// Behind proxy (Railway/Heroku)
 app.set('trust proxy', 1);
 
-// Middlewares
+// CORS + body size (firmas base64)
 app.use(cors());
-app.use(express.json({ limit: '2mb' }));
-app.use(express.urlencoded({ extended: false })); // para x-www-form-urlencoded (iframe login)
+app.options('*', cors());
+app.use(express.json({ limit: '15mb' }));
+app.use(express.urlencoded({ extended: false, limit: '15mb' }));
 
-// ======= Endpoints varios que ya tenías =======
+// servir imágenes de firmas
+app.use('/firmas', express.static(path.join(process.cwd(), 'firmas')));
 
-// Capacidades
+// ======= Endpoints existentes =======
 app.get('/capacidades', async (req, res) => {
   const { destino, transporte } = req.query;
   if (!destino || !transporte) {
@@ -49,7 +53,6 @@ app.get('/capacidades', async (req, res) => {
   }
 });
 
-// Precio
 app.get('/precio', async (req, res) => {
   const { destino, transporte, capacidad } = req.query;
   if (!destino || !transporte || !capacidad) {
@@ -79,46 +82,24 @@ app.get('/precio', async (req, res) => {
   }
 });
 
-// Hoteles
-app.get('/hoteles', async (_req, res) => {
-  try {
-    const result = await pool.query(
-      `
-      SELECT DISTINCT nombre_hotel
-      FROM hoteles_zona
-      WHERE nombre_hotel IS NOT NULL AND nombre_hotel <> ''
-      ORDER BY nombre_hotel
-      `
-    );
-    const hoteles = result.rows.map(r => r.nombre_hotel);
-    res.json(hoteles);
-  } catch (err) {
-    console.error('❌ Error al consultar hoteles:', err.message);
-    res.status(500).json({ error: 'Error en la base de datos' });
-  }
-});
-
-// Guardar destino (si ya lo usas)
+// Guardar destino (si lo usas)
 app.post('/guardar-destino', guardarDestino);
 
-app.post('/api/guardar-firma-tours', guardarFirma);
+// ✅ corregido: usar el handler que importaste
+app.post('/api/guardar-firma-tours', guardarFirmaTours);
 
-// Login (iframe)
+// Login iframe
 app.post('/api/login-usuario', loginUsuario);
 
-// ======= Rutas canónicas para TOURS (manteniendo nombre “destino”) =======
+// Tours
 app.get('/api/obtener-reserva-tours', obtenerReservaTours);
 app.post('/api/actualizar-datos-tours', actualizarDatosTours);
 
 // Healthcheck
-app.get('/', (_req, res) => {
-  res.send('API Destinos activa 🎯');
-});
+app.get('/', (_req, res) => res.send('API Destinos activa 🎯'));
 
 // 404
-app.use((req, res) => {
-  res.status(404).json({ error: 'Ruta no encontrada' });
-});
+app.use((req, res) => res.status(404).json({ error: 'Ruta no encontrada' }));
 
 // Error handler
 app.use((err, _req, res, _next) => {
@@ -126,7 +107,4 @@ app.use((err, _req, res, _next) => {
   res.status(500).json({ error: 'Error interno del servidor' });
 });
 
-// Start
-app.listen(PORT, () => {
-  console.log(`🚀 API de destinos corriendo en el puerto ${PORT}`);
-});
+app.listen(PORT, () => console.log(`🚀 API de destinos corriendo en el puerto ${PORT}`));

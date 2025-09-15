@@ -2,48 +2,46 @@ import fs from 'fs';
 import path from 'path';
 import pool from '../conexion.js';
 
-export default async function guardarFirma(req, res) {
-  const { token_qr, folio, firma_base64, tipo_viaje } = req.body;
-
-  const identificador = token_qr || folio;
-  const campoIdentificador = token_qr ? 'token_qr' : 'folio';
-
-  if (!identificador || !firma_base64 || !tipo_viaje) {
-    return res.status(400).json({ success: false, message: 'Faltan datos' });
-  }
-
+export default async function guardarFirmaTours(req, res) {
   try {
-    const nombreArchivo = `firma_${identificador}_${Date.now()}.png`;
-    const rutaArchivo = path.join(process.cwd(), 'firmas', nombreArchivo);
-    const base64Data = firma_base64.replace(/^data:image\/png;base64,/, '');
+    const { token_qr, folio, firma_base64, tipo_viaje } = req.body || {};
 
+    const identificador = token_qr || folio;
+    const campoIdentificador = token_qr ? 'token_qr' : 'folio';
+    if (!identificador || !firma_base64) {
+      return res.status(400).json({ success: false, message: 'Faltan datos (folio/token_qr o firma_base64)' });
+    }
+
+    // preparar carpeta
+    const dir = path.join(process.cwd(), 'firmas');
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
+    // guardar imagen
+    const nombreArchivo = `firma_${identificador}_${Date.now()}.png`;
+    const rutaArchivo = path.join(dir, nombreArchivo);
+    const base64Data = String(firma_base64).replace(/^data:image\/\w+;base64,/, '');
     fs.writeFileSync(rutaArchivo, base64Data, 'base64');
 
-    const urlFirma = `${req.protocol}://${req.get('host')}/firmas/${nombreArchivo}`;
+    // URL detrás de proxy
+    const proto = (req.headers['x-forwarded-proto'] || req.protocol);
+    const host  = (req.headers['x-forwarded-host']  || req.get('host'));
+    const urlFirma = `${proto}://${host}/firmas/${nombreArchivo}`;
 
-    // ✅ TRATAMIENTO CORRECTO Y SEPARADO
-    let campoFirma = '';
-    if (
-      tipo_viaje === 'llegada' ||
-      tipo_viaje === 'redondo_llegada' ||
-      tipo_viaje === 'shuttle' // ✅ Shuttle va aquí, tratado como llegada
-    ) {
+    // decidir columna: default "salida" para TOURS
+    const tipo = String(tipo_viaje || 'salida').toLowerCase();
+    let campoFirma = 'firma_clientesalida';
+    if (['llegada', 'redondo_llegada', 'shuttle'].includes(tipo)) {
       campoFirma = 'firma_clientellegada';
-    } else if (
-      tipo_viaje === 'salida' ||
-      tipo_viaje === 'redondo_salida'
-    ) {
+    } else if (['salida', 'redondo_salida', 'tours'].includes(tipo)) {
       campoFirma = 'firma_clientesalida';
-    } else {
-      return res.status(400).json({ success: false, message: 'Tipo de viaje inválido' });
     }
 
     const query = `UPDATE reservaciones SET ${campoFirma} = $1 WHERE ${campoIdentificador} = $2`;
     await pool.query(query, [urlFirma, identificador]);
 
-    res.json({ success: true, url: urlFirma });
+    return res.json({ success: true, url: urlFirma });
   } catch (error) {
-    console.error('❌ Error al guardar firma:', error);
-    res.status(500).json({ success: false, message: 'Error guardando firma' });
+    console.error('❌ Error al guardar firma (tours):', error);
+    return res.status(500).json({ success: false, message: 'Error guardando firma' });
   }
 }
