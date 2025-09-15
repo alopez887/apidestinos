@@ -100,6 +100,8 @@ app.get('/hoteles', async (_req, res) => {
 // Guardar destino (si ya lo usas)
 app.post('/guardar-destino', guardarDestino);
 
+app.post('/api/guardar-firma', guardarFirma);
+
 // Login (iframe)
 app.post('/api/login-usuario', loginUsuario);
 
