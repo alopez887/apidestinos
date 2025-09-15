@@ -6,7 +6,7 @@ import guardarDestino from './guardarDestino.js'; // si ya lo usas, se queda
 import loginUsuario from './loginUsuario.js';
 import { obtenerReservaTours } from './obtenerReservaTours.js'; // export con nombre
 import actualizarDatosTours from './actualizarDatosTours.js';   // export default
-import guardarFirma from './firmas/guardarFirmas.js';
+import guardarFirmaTours from './firmas/guardarFirmaTours.js';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -101,7 +101,7 @@ app.get('/hoteles', async (_req, res) => {
 // Guardar destino (si ya lo usas)
 app.post('/guardar-destino', guardarDestino);
 
-app.post('/api/guardar-firma', guardarFirma);
+app.post('/api/guardar-firma-tours', guardarFirma);
 
 // Login (iframe)
 app.post('/api/login-usuario', loginUsuario);
