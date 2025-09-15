@@ -1,81 +1,116 @@
-// actualizarDatosTours.js — Tours usando únicamente columnas *SALIDA*
 import pool from './conexion.js';
 
 export default async function actualizarDatosTours(req, res) {
   try {
     const {
+      // Identificador
       token_qr,
       folio,
-      representante_salida,   // -> representante_salida
-      chofer_nombre,          // -> chofersalida
+
+      // Datos genéricos que pueden llegar desde distintos clientes
+      tipo_viaje,             // 'salida' | 'llegada' (para tours usamos 'salida' en Fase 1 y 'llegada' en Fase 2)
+      representante_salida,   // (opcional) ya asignado en otra pantalla
+      chofer_nombre,          // -> chofersalida (si aplica)
       unit,                   // -> numero_unidadsalida
-      comentarios,            // -> comentariossalida
-      fecha_inicioviaje,      // -> fecha_inicioviajesalida (estatus 'asignado')
-      fecha_finalviaje,       // -> fecha_finalviajesalida (estatus 'finalizado')
+      comentarios,            // -> comentariossalida / comentariosllegada
+      fecha_inicioviaje,      // -> *_inicioviaje(salida|llegada)
+      fecha_finalviaje,       // -> *_finalviaje(salida|llegada)
       cantidad_pasajerosok    // -> cantidad_pasajerosoksalida
     } = req.body || {};
 
-    if (!token_qr && !folio) {
-      return res.status(400).json({ success: false, message: 'Falta identificador: token_qr o folio' });
-    }
-
-    const identificador      = token_qr || folio;
+    const identificador = token_qr || folio;
     const campoIdentificador = token_qr ? 'token_qr' : 'folio';
 
-    // validación de existencia
-    const chk = await pool.query(
-      `SELECT 1 FROM reservaciones WHERE ${campoIdentificador} = $1 LIMIT 1`,
-      [identificador]
-    );
-    if (chk.rowCount === 0) {
-      return res.status(404).json({ success: false, message: 'Reservación no encontrada' });
+    if (!identificador) {
+      return res.status(400).json({ success: false, message: 'Falta folio o token_qr' });
     }
 
-    // construir UPDATE dinámico sólo con columnas *SALIDA*
-    const sets   = [];
+    // Construimos UPDATE dinámico
+    const sets = [];
     const values = [];
     let i = 1;
-    const set = (col, val) => { sets.push(`${col} = $${i++}`); values.push(val); };
 
-    if (representante_salida !== undefined)
-      set('representante_salida', representante_salida?.toString().trim() || null);
+    const lowerTipo = (tipo_viaje || '').toLowerCase();
 
-    if (comentarios !== undefined)
-      set('comentariossalida', comentarios?.toString().trim() || null);
+    // ---------- Soporte genérico para *_salida (Fase 1) ----------
+    // Estos campos son seguros de actualizar si vienen en el payload
+    if (representante_salida) {
+      sets.push(`representante_salida = $${i++}`);
+      values.push(representante_salida);
+    }
+    if (chofer_nombre) {
+      sets.push(`chofersalida = $${i++}`);
+      values.push(chofer_nombre);
+    }
+    if (unit) {
+      sets.push(`numero_unidadsalida = $${i++}`);
+      values.push(unit);
+    }
+    if (typeof cantidad_pasajerosok !== 'undefined') {
+      sets.push(`cantidad_pasajerosoksalida = $${i++}`);
+      values.push(Number(cantidad_pasajerosok) || 0);
+    }
+    if (typeof comentarios === 'string') {
+      // Para tours usaremos comentariossalida en Fase 1; en Fase 2 se maneja aparte si se requiere
+      sets.push(`comentariossalida = $${i++}`);
+      values.push(comentarios);
+    }
 
-    if (unit !== undefined)
-      set('numero_unidadsalida', (unit === '' || unit === null) ? null : unit.toString().trim());
-
-    if (cantidad_pasajerosok !== undefined)
-      set('cantidad_pasajerosoksalida', (cantidad_pasajerosok === '' || cantidad_pasajerosok === null) ? null : Number(cantidad_pasajerosok));
-
-    // fechas -> estatus_viajesalida
-    let estatusViaje = null;
-    const toISO = (v) => { try { return new Date(v).toISOString(); } catch { return null; } };
-
+    // Manejo de fechas y estatus de SALIDA
+    let estatusSalida; // para saber si se finalizó
     if (fecha_inicioviaje) {
-      const iso = toISO(fecha_inicioviaje);
-      if (iso) { set('fecha_inicioviajesalida', iso); estatusViaje = 'asignado'; }
+      sets.push(`fecha_inicioviajesalida = $${i++}`);
+      values.push(fecha_inicioviaje);
+      // si solo recibimos inicio, consideramos estatus asignado
+      sets.push(`estatus_viajesalida = 'asignado'`);
+      estatusSalida = 'asignado';
     }
     if (fecha_finalviaje) {
-      const iso = toISO(fecha_finalviaje);
-      if (iso) { set('fecha_finalviajesalida', iso); estatusViaje = 'finalizado'; }
+      sets.push(`fecha_finalviajesalida = $${i++}`);
+      values.push(fecha_finalviaje);
+      sets.push(`estatus_viajesalida = 'finalizado'`);
+      estatusSalida = 'finalizado';
     }
-    if (estatusViaje) set('estatus_viajesalida', estatusViaje);
 
-    // chofer interno
-    if (chofer_nombre !== undefined)
-      set('chofersalida', (chofer_nombre === '' || chofer_nombre === null) ? null : chofer_nombre.toString().trim());
+    // ---------- Si se FINALIZA Fase 1, preparamos Fase 2 ----------
+    // Clonamos valores *_salida -> *_llegada y abrimos llegada
+    if (estatusSalida === 'finalizado') {
+      sets.push(`representante_llegada = COALESCE(representante_llegada, representante_salida)`);
+      sets.push(`choferllegada = COALESCE(choferllegada, chofersalida)`);
+      sets.push(`numero_unidadllegada = COALESCE(numero_unidadllegada, numero_unidadsalida)`);
+      sets.push(`cantidad_pasajerosokllegada = COALESCE(cantidad_pasajerosokllegada, cantidad_pasajerosoksalida)`);
+      // Usamos el comentario de salida para inicializar el de llegada si aún no existe
+      sets.push(`comentariosllegada = COALESCE(comentariosllegada, comentariossalida)`);
+      // Abrimos Fase 2
+      sets.push(`estatus_viajellegada = 'asignado'`);
+      sets.push(`fecha_inicioviajellegada = COALESCE(fecha_inicioviajellegada, NOW())`);
+      // NOTA: la firma de llegada se guarda en otro endpoint (guardarFirmaTours)
+    }
 
-    // Tours NO usa chofer externo
-    sets.push('chofer_externonombre = NULL');
-    sets.push('choferexterno_tel   = NULL');
-    sets.push('chofer_empresaext   = NULL');
+    // ---------- Soporte para actualizar llegada explícitamente (Fase 2) ----------
+    if (lowerTipo === 'llegada') {
+      // Comentarios de llegada si vinieran desde el panel (opcional)
+      if (typeof comentarios === 'string') {
+        sets.push(`comentariosllegada = $${i++}`);
+        values.push(comentarios);
+      }
+      if (fecha_inicioviaje) {
+        sets.push(`fecha_inicioviajellegada = $${i++}`);
+        values.push(fecha_inicioviaje);
+        sets.push(`estatus_viajellegada = 'asignado'`);
+      }
+      if (fecha_finalviaje) {
+        sets.push(`fecha_finalviajellegada = $${i++}`);
+        values.push(fecha_finalviaje);
+        sets.push(`estatus_viajellegada = 'finalizado'`);
+      }
+    }
 
     if (sets.length === 0) {
-      return res.status(400).json({ success: false, message: 'No se recibieron campos para actualizar' });
+      return res.status(400).json({ success: false, message: 'Sin cambios' });
     }
 
+    // WHERE
     values.push(identificador);
     const whereIdx = `$${i}`;
 
@@ -84,8 +119,8 @@ export default async function actualizarDatosTours(req, res) {
       SET ${sets.join(', ')}
       WHERE ${campoIdentificador} = ${whereIdx}
     `;
-    await pool.query(sql, values);
 
+    await pool.query(sql, values);
     return res.json({ success: true });
   } catch (err) {
     console.error('❌ actualizarDatosTours error:', err);
