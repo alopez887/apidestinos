@@ -6,6 +6,7 @@ import guardarDestino from './guardarDestino.js'; // si ya lo usas, se queda
 import loginUsuario from './loginUsuario.js';
 import { obtenerReservaTours } from './obtenerReservaTours.js'; // export con nombre
 import actualizarDatosTours from './actualizarDatosTours.js';   // export default
+import guardarFirma from './firmas/guardarFirmas.js';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
