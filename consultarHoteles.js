@@ -3,36 +3,27 @@ import pool from './conexion.js';
 
 export default async function consultarHoteles(req, res) {
   try {
-    const { zona = '', q = '' } = req.query;
+    const { q = '' } = req.query;
 
-    const where = [];
     const params = [];
+    const where = q
+      ? `WHERE nombre_hotel ILIKE $1`
+      : '';
 
-    if (zona) {
-      where.push('COALESCE(zona, \'\') = $' + (params.length + 1));
-      params.push(zona);
-    }
-    if (q) {
-      where.push('nombre ILIKE $' + (params.length + 1));
-      params.push(`%${q}%`);
-    }
+    if (q) params.push(`%${q}%`);
 
     const sql = `
-      SELECT nombre
+      SELECT DISTINCT TRIM(nombre_hotel) AS nombre
       FROM hoteles_zona
-      ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
-      ORDER BY nombre ASC
+      ${where}
+      ORDER BY TRIM(nombre_hotel) ASC
     `;
 
     const result = await pool.query(sql, params);
 
-    const lista = Array.from(
-      new Set(
-        (result.rows || [])
-          .map(r => (r?.nombre ?? '').toString().trim())
-          .filter(Boolean)
-      )
-    );
+    const lista = (result.rows || [])
+      .map(r => (r?.nombre ?? '').toString().trim())
+      .filter(Boolean);
 
     return res.json(lista);
   } catch (err) {
