@@ -1,8 +1,12 @@
 import pool from './conexion.js';
 
-export const consultarSalidasTours = async (req, res) => {
+const consultarSalidasTours = async (req, res) => {
   try {
     const { fecha, desde, hasta } = req.query;
+    console.log('📥 Parámetros (salidas Tours):', { fecha, desde, hasta });
+
+    // Tours: usamos fecha_inicioviajesalida como "fecha_salida" (salida del hotel hacia el tour)
+    // Devolvemos MISMAS columnas que /api/salidas (Transporte) para que el front no cambie nada.
     let query = `
       SELECT
         folio,
@@ -27,16 +31,19 @@ export const consultarSalidasTours = async (req, res) => {
       query += ` AND fecha_inicioviajesalida = $1 ORDER BY fecha_inicioviajesalida ASC, folio ASC`;
       values.push(fecha);
     } else if (desde && hasta) {
-      query += ` AND fecha_inicioviajesalida BETWEEN $1 AND $2 ORDER BY fecha_inicioviajesalida ASC, folio ASC`;
+      query += ` AND DATE(fecha_inicioviajesalida) BETWEEN $1 AND $2 ORDER BY fecha_inicioviajesalida ASC, folio ASC`;
       values.push(desde, hasta);
     } else {
       query += ` AND fecha_inicioviajesalida = CURRENT_DATE ORDER BY fecha_inicioviajesalida ASC, folio ASC`;
     }
 
     const { rows } = await pool.query(query, values);
+    console.log('✅ Salidas Tours:', rows.length);
     res.json({ datos: rows });
-  } catch (e) {
-    console.error('❌ Error consultando salidas Tours:', e);
+  } catch (err) {
+    console.error('❌ Error salidas Tours:', err);
     res.status(500).json({ error: 'Error al obtener salidas (Tours)' });
   }
 };
+
+export default consultarSalidasTours;
