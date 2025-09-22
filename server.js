@@ -9,10 +9,6 @@ import loginUsuario from './loginUsuario.js';
 import { obtenerReservaTours } from './obtenerReservaTours.js';
 import actualizarDatosTours from './actualizarDatosTours.js';
 import guardarFirmaTours from './firmas/guardarFirmaTours.js'; // <- este es el handler correcto
-import consultarSalidasTours from './consultarSalidasTours.js';
-
-// ⬇️ NUEVO: importar el handler de hoteles
-import consultarHoteles from './consultarHoteles.js';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -98,11 +94,6 @@ app.post('/api/login-usuario', loginUsuario);
 // Tours
 app.get('/api/obtener-reserva-tours', obtenerReservaTours);
 app.post('/api/actualizar-datos-tours', actualizarDatosTours);
-
-// ⬇️ NUEVO: endpoint de hoteles para Destinos/Tours (solo nombres)
-app.get('/hoteles', consultarHoteles);
-
-app.get('/api/salidas-tours', consultarSalidasTours);
 
 // Healthcheck
 app.get('/', (_req, res) => res.send('API Destinos activa 🎯'));
