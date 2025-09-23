@@ -11,6 +11,7 @@ import { obtenerReservaTours } from './obtenerReservaTours.js';
 import actualizarDatosTours from './actualizarDatosTours.js';
 import guardarFirmaTours from './firmas/guardarFirmaTours.js'; // <- este es el handler correcto
 import consultarHoteles from './consultarHoteles.js';
+import consultarSalidas from './consultarSalidas.js';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -98,6 +99,8 @@ app.get('/api/obtener-reserva-tours', obtenerReservaTours);
 app.post('/api/actualizar-datos-tours', actualizarDatosTours);
 
 app.get('/api/consultar-hoteles', consultarHoteles);
+
+app.get('/api/salidas', consultarSalidas);
 
 // Healthcheck
 app.get('/', (_req, res) => res.send('API Destinos activa 🎯'));
