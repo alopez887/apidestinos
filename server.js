@@ -10,6 +10,7 @@ import loginUsuario from './loginUsuario.js';
 import { obtenerReservaTours } from './obtenerReservaTours.js';
 import actualizarDatosTours from './actualizarDatosTours.js';
 import guardarFirmaTours from './firmas/guardarFirmaTours.js'; // <- este es el handler correcto
+import consultarHoteles from './consultarHoteles.js';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -95,6 +96,8 @@ app.post('/api/login-usuario', loginUsuario);
 // Tours
 app.get('/api/obtener-reserva-tours', obtenerReservaTours);
 app.post('/api/actualizar-datos-tours', actualizarDatosTours);
+
+app.get('/api/consultar-hoteles', consultarHoteles);
 
 // Healthcheck
 app.get('/', (_req, res) => res.send('API Destinos activa 🎯'));
