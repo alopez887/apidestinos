@@ -1,59 +1,64 @@
+// consultarSalidas.js
 import pool from './conexion.js';
 
 const consultarSalidas = async (req, res) => {
   try {
     const { fecha, desde, hasta } = req.query;
-    console.log('📥 Parámetros recibidos (salidas):', { fecha, desde, hasta });
+    console.log('📥 Parámetros recibidos (salidas TOURS):', { fecha, desde, hasta });
+
+    // Tours a veces guardan fecha/hora en otros campos; priorizamos *_salida y caemos a fecha/hora
+    const dateCol = `COALESCE(fecha_salida, fecha)`;
+    const timeCol = `COALESCE(hora_salida, hora)`;
 
     let query = `
-      SELECT 
+      SELECT
         folio,
         nombre_cliente,
         nota,
-        tipo_viaje,
-        tipo_transporte,
+        'Tours'::text AS tipo_viaje,                         -- fijo a Tours
+        COALESCE(tipo_transporte, transporte) AS tipo_transporte,
         capacidad,
-        cantidad_pasajeros,
-        hotel_salida,
+        COALESCE(cantidad_pasajeros, pasajeros) AS cantidad_pasajeros,
+        COALESCE(hotel_salida, hotel) AS hotel_salida,
         zona,
-        fecha_salida,
-        hora_salida,
-        aerolinea_salida,
-        vuelo_salida
+        ${dateCol} AS fecha_salida,
+        ${timeCol} AS hora_salida,
+        NULL::text AS aerolinea_salida,                       -- no aplica en tours
+        NULL::text AS vuelo_salida,                           -- no aplica en tours
+        COALESCE(nombre_tour, tour) AS nombre_tour            -- propio de tours
       FROM reservaciones
-      WHERE (
-        tipo_viaje ILIKE 'salida'
-        OR (tipo_viaje ILIKE 'redondo' AND fecha_salida IS NOT NULL)
-      )
+      WHERE UPPER(tipo_viaje) = 'TOURS'
     `;
+
     const values = [];
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
 
     if (fecha) {
-      console.log('🔍 Usando búsqueda por fecha exacta (salida):', fecha);
-      query += ` AND fecha_salida = $1 ORDER BY hora_salida ASC`;
+      if (!dateRegex.test(fecha)) {
+        return res.status(400).json({ error: 'Fecha mal formateada (YYYY-MM-DD)' });
+      }
+      console.log('🔍 Filtro por fecha exacta (Tours):', fecha);
+      query += ` AND ${dateCol} = $1 ORDER BY ${timeCol} ASC`;
       values.push(fecha);
     } else if (desde && hasta) {
-      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
       if (!dateRegex.test(desde) || !dateRegex.test(hasta)) {
-        console.warn('⚠️ Formato de fecha inválido en desde/hasta (salida):', { desde, hasta });
-        return res.status(400).json({ error: 'Fechas mal formateadas' });
+        return res.status(400).json({ error: 'Fechas mal formateadas (YYYY-MM-DD)' });
       }
-
-      console.log(`🔍 Usando búsqueda por rango (salida): ${desde} → ${hasta}`);
-      query += ` AND fecha_salida BETWEEN $1 AND $2 ORDER BY fecha_salida ASC, hora_salida ASC`;
+      console.log(`🔍 Filtro por rango (Tours): ${desde} → ${hasta}`);
+      query += ` AND ${dateCol} BETWEEN $1 AND $2 ORDER BY ${dateCol} ASC, ${timeCol} ASC`;
       values.push(desde, hasta);
     } else {
-      console.log('🔍 Usando búsqueda por fecha actual (CURRENT_DATE) para salidas');
-      query += ` AND fecha_salida = CURRENT_DATE ORDER BY hora_salida ASC`;
+      console.log('🔍 Filtro por fecha actual (Tours): CURRENT_DATE');
+      query += ` AND ${dateCol} = CURRENT_DATE ORDER BY ${timeCol} ASC`;
     }
 
     const result = await pool.query(query, values);
-    console.log('✅ Resultados encontrados (salidas):', result.rows.length);
+    console.log('✅ Salidas Tours encontradas:', result.rows.length);
 
     res.json({ datos: result.rows });
   } catch (error) {
-    console.error('❌ Error consultando salidas:', error.message);
-    res.status(500).json({ error: 'Error al obtener salidas desde la base de datos' });
+    console.error('❌ Error consultando salidas Tours:', error.message);
+    res.status(500).json({ error: 'Error al obtener salidas (Tours)' });
   }
 };
 
