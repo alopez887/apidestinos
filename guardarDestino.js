@@ -1,9 +1,8 @@
-// guardarDestino.js (usa columna DB: token_qr)
+// guardarDestino.js (parche: calcular zona y guardarla)
 import crypto from 'crypto';
 import pool from './conexion.js';
 import { enviarCorreoDestino } from './correoDestino.js';
 
-// Helpers
 function firstNonNil(...xs){ for (const v of xs) if (v !== undefined && v !== null && v !== '') return v; return null; }
 function moneyNum(v){
   if (v === undefined || v === null || v === '') return null;
@@ -11,7 +10,7 @@ function moneyNum(v){
   const n = Number(s);
   return Number.isFinite(n) ? n : null;
 }
-function genTokenQR(){ return crypto.randomBytes(20).toString('hex'); } // 40 chars
+function genTokenQR(){ return crypto.randomBytes(20).toString('hex'); }
 
 export default async function guardarDestino(req, res) {
   const datos = req.body || {};
@@ -38,62 +37,76 @@ export default async function guardarDestino(req, res) {
       nuevoFolio = `D-${num.toString().padStart(6, '0')}`;
     }
 
-    // Token QR (40 chars)
     const tokenQR = genTokenQR();
-
-    // Teléfono completo
     const telefonoCompleto = `${datos.codigoPais || ''}${datos.telefono || ''}`.trim();
 
-    // Total normalizado (acepta total | total_pago | precio | monto)
     const totalRaw = firstNonNil(datos.total, datos.total_pago, datos.precio, datos.monto);
     const totalNum = moneyNum(totalRaw);
     if (totalNum == null) {
       return res.status(400).json({ error: "total_pago inválido", recibido: totalRaw });
     }
 
-    // 🔵 Normalizaciones pedidas
-    const tipoServicio = 'Tours';                            // ✅ siempre "Tours"
-    const tipoViaje    = firstNonNil(datos.tipo_viaje, 'Tours'); // ✅ default "Tours"
+    const tipoServicio = 'Tours';
+    const tipoViaje    = firstNonNil(datos.tipo_viaje, 'Tours');
 
-    // INSERT: usa la columna correcta: token_qr
+    // ✅ OBTENER ZONA del hotel (si existe en hoteles_zona)
+    let zonaHotel = null;
+    if (datos.hotel) {
+      try {
+        const rz = await pool.query(
+          `SELECT zona
+             FROM hoteles_zona
+            WHERE TRIM(UPPER(nombre_hotel)) = TRIM(UPPER($1))
+            LIMIT 1`,
+          [datos.hotel]
+        );
+        zonaHotel = rz.rows?.[0]?.zona || null;
+      } catch (e) {
+        console.warn('⚠️ No se pudo resolver zona de hoteles_zona:', e.message);
+      }
+    }
+
+    // INSERT con columna ZONA
     await pool.query(`
       INSERT INTO reservaciones
       (folio, nombre_tour, tipo_servicio, estatus, tipo_transporte,
        nombre_cliente, correo_cliente, nota, fecha,
-       capacidad, cantidad_pasajeros, hotel_llegada, hotel_salida,
+       capacidad, cantidad_pasajeros, hotel_llegada, hotel_salida, zona,
        fecha_salida, hora_salida, precio_servicio, tipo_viaje, total_pago,
        telefono_cliente, token_qr)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8, NOW() AT TIME ZONE 'America/Mazatlan',
-              $9,$10,$11,$12,$13,$14,$15,$16,$17,
-              $18, $19)
+              $9,$10,$11,$12,$13,
+              $14,$15,$16,$17,$18,
+              $19,$20)
     `, [
-      nuevoFolio,                 // folio
-      datos.destino,              // nombre_tour
-      tipoServicio,               // ✅ tipo_servicio = 'Tours' (ANTES: datos.tipo_viaje)
-      1,                          // estatus
-      datos.transporte,           // tipo_transporte
-      datos.nombre,               // nombre_cliente
-      datos.correo,               // correo_cliente
-      datos.comentarios || '',    // nota
-      datos.capacidad,            // capacidad
-      datos.pasajeros,            // cantidad_pasajeros
-      datos.hotel,                // hotel_llegada
-      datos.hotel,                // hotel_salida
-      datos.fecha,                // fecha_salida
-      datos.hora,                 // hora_salida
-      totalNum,                   // precio_servicio
-      tipoViaje,                  // ✅ tipo_viaje = 'Tours' (o lo que venga, pero default 'Tours')
-      totalNum,                   // total_pago
-      telefonoCompleto,           // telefono_cliente
-      tokenQR                     // token_qr (BD)
+      nuevoFolio,                 // 1  folio
+      datos.destino,              // 2  nombre_tour
+      tipoServicio,               // 3  tipo_servicio = 'Tours'
+      1,                          // 4  estatus
+      datos.transporte,           // 5  tipo_transporte
+      datos.nombre,               // 6  nombre_cliente
+      datos.correo,               // 7  correo_cliente
+      datos.comentarios || '',    // 8  nota
+      datos.capacidad,            // 9  capacidad
+      datos.pasajeros,            // 10 cantidad_pasajeros
+      datos.hotel,                // 11 hotel_llegada
+      datos.hotel,                // 12 hotel_salida
+      zonaHotel,                  // 13 zona  ✅
+      datos.fecha,                // 14 fecha_salida
+      datos.hora,                 // 15 hora_salida
+      totalNum,                   // 16 precio_servicio
+      tipoViaje,                  // 17 tipo_viaje
+      totalNum,                   // 18 total_pago
+      telefonoCompleto,           // 19 telefono_cliente
+      tokenQR                     // 20 token_qr
     ]);
 
     console.log("✅ Reserva insertada con folio:", nuevoFolio);
 
-    // Enviar correo (correoDestino espera token_qr)
+    // (Opcional) Pasar zona en el correo si lo usas en plantillas
     await enviarCorreoDestino({
       folio: nuevoFolio,
-      tipo_viaje: tipoViaje,          // ✅ coherente con lo insertado
+      tipo_viaje: tipoViaje,
       destino: datos.destino,
       tipo_transporte: datos.transporte,
       capacidad: datos.capacidad,
@@ -108,11 +121,11 @@ export default async function guardarDestino(req, res) {
       total_pago: totalNum,
       imagenDestino: datos.imagenDestino || '',
       imagenTransporte: datos.imagenTransporte || '',
-      token_qr: tokenQR // 🔑 activa el QR en el correo
+      zona: zonaHotel || '',                 // <- por si lo ocupas en el correo
+      token_qr: tokenQR
     });
 
-    console.log("✅ Correo de destino enviado correctamente");
-    res.status(200).json({ exito: true, folio: nuevoFolio, token_qr: tokenQR });
+    res.status(200).json({ exito: true, folio: nuevoFolio, token_qr: tokenQR, zona: zonaHotel });
 
   } catch (err) {
     console.error("❌ Error al insertar reserva o enviar correo:", err);
