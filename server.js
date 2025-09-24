@@ -13,6 +13,7 @@ import guardarFirmaTours from './firmas/guardarFirmaTours.js'; // <- este es el 
 import consultarHoteles from './consultarHoteles.js';
 import consultarSalidas from './consultarSalidas.js';
 import exportarExcelSalidasTours from './exportarExcelSalidasTours.js';
+import exportarExcelSalidasAmbos from './exportarExcelSalidasAmbos.js';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -95,6 +96,7 @@ app.post('/api/actualizar-datos-tours', actualizarDatosTours);
 app.get('/api/consultar-hoteles', consultarHoteles);
 app.get('/api/salidas', consultarSalidas);
 app.get('/api/exportarExcelSalidas', exportarExcelSalidasTours);
+app.get('/api/exportarExcelSalidasAmbos', exportarExcelSalidasAmbos);
 app.get('/', (_req, res) => res.send('API Destinos activa 🎯'));
 
 // 404
