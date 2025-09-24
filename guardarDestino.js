@@ -1,4 +1,4 @@
-// guardarDestino.js (parche: calcular zona y guardarla)
+// guardarDestino.js — Tours (parche zona)
 import crypto from 'crypto';
 import pool from './conexion.js';
 import { enviarCorreoDestino } from './correoDestino.js';
@@ -14,7 +14,7 @@ function genTokenQR(){ return crypto.randomBytes(20).toString('hex'); }
 
 export default async function guardarDestino(req, res) {
   const datos = req.body || {};
-  console.log("📥 Datos recibidos en guardarDestino:", datos);
+  console.log("📥 Datos recibidos en guardarDestino (Tours):", datos);
 
   if (!datos.destino || !datos.nombre || !datos.correo) {
     return res.status(400).json({ error: "Faltan datos requeridos (destino, nombre, correo)" });
@@ -24,10 +24,10 @@ export default async function guardarDestino(req, res) {
     // Folio incremental D-XXXXXX
     const resultFolio = await pool.query(`
       SELECT folio
-      FROM reservaciones
-      WHERE folio LIKE 'D-%'
-      ORDER BY id DESC
-      LIMIT 1
+        FROM reservaciones
+       WHERE folio LIKE 'D-%'
+       ORDER BY id DESC
+       LIMIT 1
     `);
 
     let nuevoFolio = 'D-000001';
@@ -49,24 +49,38 @@ export default async function guardarDestino(req, res) {
     const tipoServicio = 'Tours';
     const tipoViaje    = firstNonNil(datos.tipo_viaje, 'Tours');
 
-    // ✅ OBTENER ZONA del hotel (si existe en hoteles_zona)
-    let zonaHotel = null;
-    if (datos.hotel) {
+    /* ===========================
+       RESOLVER ZONA (igual que Transporte)
+       =========================== */
+    let zonaBD = '';
+    const hotelRef = (datos.hotel || datos.hotel_salida || datos.hotel_llegada || '').trim();
+
+    if (datos.zona && String(datos.zona).trim() !== '') {
+      zonaBD = String(datos.zona).trim();
+      console.log("📍 Zona recibida desde frontend (Tours):", zonaBD);
+    } else if (hotelRef) {
       try {
+        // Soporta tablas con zona_id (numérico) o zona (texto)
         const rz = await pool.query(
-          `SELECT zona
-             FROM hoteles_zona
-            WHERE TRIM(UPPER(nombre_hotel)) = TRIM(UPPER($1))
-            LIMIT 1`,
-          [datos.hotel]
+          `
+          SELECT 
+            COALESCE(CAST(zona_id AS TEXT), NULL) AS z1,
+            COALESCE(CAST(zona      AS TEXT), NULL) AS z2
+          FROM hoteles_zona
+          WHERE UPPER(nombre_hotel) LIKE UPPER($1)
+          LIMIT 1
+          `,
+          [`%${hotelRef}%`]
         );
-        zonaHotel = rz.rows?.[0]?.zona || null;
+        const r = rz.rows?.[0];
+        zonaBD = (r?.z1 || r?.z2 || '').trim();
+        console.log("📍 Zona resuelta por DB (Tours):", zonaBD, "hotelRef:", hotelRef);
       } catch (e) {
-        console.warn('⚠️ No se pudo resolver zona de hoteles_zona:', e.message);
+        console.warn('⚠️ No se pudo resolver zona desde hoteles_zona (Tours):', e.message);
       }
     }
 
-    // INSERT con columna ZONA
+    // INSERT (agrega zona)
     await pool.query(`
       INSERT INTO reservaciones
       (folio, nombre_tour, tipo_servicio, estatus, tipo_transporte,
@@ -74,7 +88,8 @@ export default async function guardarDestino(req, res) {
        capacidad, cantidad_pasajeros, hotel_llegada, hotel_salida, zona,
        fecha_salida, hora_salida, precio_servicio, tipo_viaje, total_pago,
        telefono_cliente, token_qr)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8, NOW() AT TIME ZONE 'America/Mazatlan',
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,
+              NOW() AT TIME ZONE 'America/Mazatlan',
               $9,$10,$11,$12,$13,
               $14,$15,$16,$17,$18,
               $19,$20)
@@ -89,9 +104,9 @@ export default async function guardarDestino(req, res) {
       datos.comentarios || '',    // 8  nota
       datos.capacidad,            // 9  capacidad
       datos.pasajeros,            // 10 cantidad_pasajeros
-      datos.hotel,                // 11 hotel_llegada
-      datos.hotel,                // 12 hotel_salida
-      zonaHotel,                  // 13 zona  ✅
+      hotelRef,                   // 11 hotel_llegada
+      hotelRef,                   // 12 hotel_salida
+      zonaBD || null,             // 13 zona  ✅
       datos.fecha,                // 14 fecha_salida
       datos.hora,                 // 15 hora_salida
       totalNum,                   // 16 precio_servicio
@@ -101,16 +116,16 @@ export default async function guardarDestino(req, res) {
       tokenQR                     // 20 token_qr
     ]);
 
-    console.log("✅ Reserva insertada con folio:", nuevoFolio);
+    console.log("✅ Reserva Tours insertada con folio:", nuevoFolio, "zona:", zonaBD || '(null)');
 
-    // (Opcional) Pasar zona en el correo si lo usas en plantillas
+    // Email (si usas zona en la plantilla, ya va adjunta)
     await enviarCorreoDestino({
       folio: nuevoFolio,
       tipo_viaje: tipoViaje,
       destino: datos.destino,
       tipo_transporte: datos.transporte,
       capacidad: datos.capacidad,
-      hotel_llegada: datos.hotel,
+      hotel_llegada: hotelRef,
       fecha_llegada: datos.fecha,
       hora_llegada: datos.hora,
       nombre_cliente: datos.nombre,
@@ -121,14 +136,19 @@ export default async function guardarDestino(req, res) {
       total_pago: totalNum,
       imagenDestino: datos.imagenDestino || '',
       imagenTransporte: datos.imagenTransporte || '',
-      zona: zonaHotel || '',                 // <- por si lo ocupas en el correo
+      zona: zonaBD || '',
       token_qr: tokenQR
     });
 
-    res.status(200).json({ exito: true, folio: nuevoFolio, token_qr: tokenQR, zona: zonaHotel });
+    return res.status(200).json({
+      exito: true,
+      folio: nuevoFolio,
+      token_qr: tokenQR,
+      zona: zonaBD || null
+    });
 
   } catch (err) {
-    console.error("❌ Error al insertar reserva o enviar correo:", err);
-    res.status(500).json({ error: "Error interno al guardar" });
+    console.error("❌ Error al insertar reserva (Tours) o enviar correo:", err);
+    return res.status(500).json({ error: "Error interno al guardar (Tours)" });
   }
 }
