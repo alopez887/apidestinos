@@ -1,4 +1,4 @@
-// guardarDestino.js — Tours (parche zona)
+// guardarDestino.js — Tours (zona_id desde hoteles_zona)
 import crypto from 'crypto';
 import pool from './conexion.js';
 import { enviarCorreoDestino } from './correoDestino.js';
@@ -21,7 +21,7 @@ export default async function guardarDestino(req, res) {
   }
 
   try {
-    // Folio incremental D-XXXXXX
+    // === Folio D-XXXXXX ===
     const resultFolio = await pool.query(`
       SELECT folio
         FROM reservaciones
@@ -49,9 +49,9 @@ export default async function guardarDestino(req, res) {
     const tipoServicio = 'Tours';
     const tipoViaje    = firstNonNil(datos.tipo_viaje, 'Tours');
 
-    /* ===========================
-       RESOLVER ZONA (igual que Transporte)
-       =========================== */
+    // ===========================
+    // RESOLVER ZONA (usa zona_id)
+    // ===========================
     let zonaBD = '';
     const hotelRef = (datos.hotel || datos.hotel_salida || datos.hotel_llegada || '').trim();
 
@@ -60,27 +60,24 @@ export default async function guardarDestino(req, res) {
       console.log("📍 Zona recibida desde frontend (Tours):", zonaBD);
     } else if (hotelRef) {
       try {
-        // Soporta tablas con zona_id (numérico) o zona (texto)
+        // Igual que en guardarTransporte: buscar por nombre del hotel (LIKE)
         const rz = await pool.query(
-          `
-          SELECT 
-            COALESCE(CAST(zona_id AS TEXT), NULL) AS z1,
-            COALESCE(CAST(zona      AS TEXT), NULL) AS z2
-          FROM hoteles_zona
-          WHERE UPPER(nombre_hotel) LIKE UPPER($1)
-          LIMIT 1
-          `,
+          `SELECT zona_id
+             FROM hoteles_zona
+            WHERE UPPER(nombre_hotel) LIKE UPPER($1)
+            LIMIT 1`,
           [`%${hotelRef}%`]
         );
-        const r = rz.rows?.[0];
-        zonaBD = (r?.z1 || r?.z2 || '').trim();
-        console.log("📍 Zona resuelta por DB (Tours):", zonaBD, "hotelRef:", hotelRef);
+        zonaBD = (rz.rows?.[0]?.zona_id ?? '').toString().trim();
+        console.log("📍 Zona resuelta por DB (Tours):", zonaBD || '(vacía)', "hotelRef:", hotelRef);
       } catch (e) {
         console.warn('⚠️ No se pudo resolver zona desde hoteles_zona (Tours):', e.message);
       }
     }
 
-    // INSERT (agrega zona)
+    // ===========================
+    // INSERT en reservaciones
+    // ===========================
     await pool.query(`
       INSERT INTO reservaciones
       (folio, nombre_tour, tipo_servicio, estatus, tipo_transporte,
@@ -106,7 +103,7 @@ export default async function guardarDestino(req, res) {
       datos.pasajeros,            // 10 cantidad_pasajeros
       hotelRef,                   // 11 hotel_llegada
       hotelRef,                   // 12 hotel_salida
-      zonaBD || null,             // 13 zona  ✅
+      zonaBD || null,             // 13 zona  ✅ (zona_id)
       datos.fecha,                // 14 fecha_salida
       datos.hora,                 // 15 hora_salida
       totalNum,                   // 16 precio_servicio
@@ -118,7 +115,9 @@ export default async function guardarDestino(req, res) {
 
     console.log("✅ Reserva Tours insertada con folio:", nuevoFolio, "zona:", zonaBD || '(null)');
 
-    // Email (si usas zona en la plantilla, ya va adjunta)
+    // ===========================
+    // Correo (si lo usas)
+    // ===========================
     await enviarCorreoDestino({
       folio: nuevoFolio,
       tipo_viaje: tipoViaje,
