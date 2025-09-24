@@ -6,7 +6,7 @@ const consultarSalidas = async (req, res) => {
     const { fecha, desde, hasta } = req.query;
     console.log('📥 Parámetros recibidos (salidas TOURS):', { fecha, desde, hasta });
 
-    // Para Tours, algunos registros tienen *_salida; otros usan fecha/hora "normales".
+    // Tours puede tener fecha/hora en *_salida o en fecha/hora
     const dateCol = `COALESCE(fecha_salida, fecha)`;
     const timeCol = `COALESCE(hora_salida, hora)`;
 
@@ -15,33 +15,31 @@ const consultarSalidas = async (req, res) => {
         folio,
         nombre_cliente,
         nota,
-        'Tours'::text AS tipo_viaje,                         -- forzamos etiqueta "Tours"
-        COALESCE(tipo_transporte, '—') AS tipo_transporte,   -- NO usamos "transporte" (no existe)
+        'Tours'::text AS tipo_viaje,                      -- forzamos etiqueta Tours
+        COALESCE(tipo_transporte, '—') AS tipo_transporte, -- si no existe valor, devolvemos "—"
         capacidad,
-        COALESCE(cantidad_pasajeros, pasajeros, 0) AS cantidad_pasajeros,
+        COALESCE(cantidad_pasajeros, 0) AS cantidad_pasajeros, -- 👈 usar SOLO tu columna real
         COALESCE(hotel_salida, hotel, '') AS hotel_salida,
         zona,
         ${dateCol} AS fecha_salida,
         ${timeCol} AS hora_salida,
-        NULL::text AS aerolinea_salida,                      -- no aplica en tours
-        NULL::text AS vuelo_salida,                          -- no aplica en tours
-        COALESCE(nombre_tour, tour, '—') AS nombre_tour      -- propio de tours
+        NULL::text AS aerolinea_salida,                   -- en Tours no aplica
+        NULL::text AS vuelo_salida,                       -- en Tours no aplica
+        COALESCE(nombre_tour, tour, '—') AS nombre_tour   -- nombre del tour
       FROM reservaciones
-      WHERE (UPPER(tipo_viaje) = 'TOURS' OR UPPER(tipo_servicio) = 'TOURS')
+      WHERE (UPPER(tipo_servicio) = 'TOURS' OR UPPER(tipo_viaje) = 'TOURS')
     `;
 
     const params = [];
-    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    const dateRe = /^\d{4}-\d{2}-\d{2}$/;
 
     if (fecha) {
-      if (!dateRegex.test(fecha)) {
-        return res.status(400).json({ error: 'Fecha mal formateada (YYYY-MM-DD)' });
-      }
+      if (!dateRe.test(fecha)) return res.status(400).json({ error: 'Fecha mal formateada (YYYY-MM-DD)' });
       console.log('🔍 Filtro por fecha exacta (Tours):', fecha);
       sql += ` AND ${dateCol} = $1 ORDER BY ${timeCol} ASC`;
       params.push(fecha);
     } else if (desde && hasta) {
-      if (!dateRegex.test(desde) || !dateRegex.test(hasta)) {
+      if (!dateRe.test(desde) || !dateRe.test(hasta)) {
         return res.status(400).json({ error: 'Fechas mal formateadas (YYYY-MM-DD)' });
       }
       console.log(`🔍 Filtro por rango (Tours): ${desde} → ${hasta}`);
