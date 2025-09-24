@@ -12,7 +12,7 @@ import actualizarDatosTours from './actualizarDatosTours.js';
 import guardarFirmaTours from './firmas/guardarFirmaTours.js'; // <- este es el handler correcto
 import consultarHoteles from './consultarHoteles.js';
 import consultarSalidas from './consultarSalidas.js';
-import exportarExcelSalidasTours from, './exportarExcelSalidasTours.js';
+import exportarExcelSalidasTours from './exportarExcelSalidasTours.js';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
