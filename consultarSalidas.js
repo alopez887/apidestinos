@@ -1,4 +1,3 @@
-// consultarSalidas.js
 import pool from './conexion.js';
 
 const consultarSalidas = async (req, res) => {
@@ -6,57 +5,55 @@ const consultarSalidas = async (req, res) => {
     const { fecha, desde, hasta } = req.query;
     console.log('📥 Parámetros recibidos (salidas TOURS):', { fecha, desde, hasta });
 
-    // Tours puede tener fecha/hora en *_salida o en fecha/hora
-    const dateCol = `COALESCE(fecha_salida, fecha)`;
-    const timeCol = `COALESCE(hora_salida, hora)`;
-
-    let sql = `
-      SELECT
+    let query = `
+      SELECT 
         folio,
         nombre_cliente,
         nota,
-        'Tours'::text AS tipo_viaje,                      -- forzamos etiqueta Tours
-        COALESCE(tipo_transporte, '—') AS tipo_transporte, -- si no existe valor, devolvemos "—"
+        tipo_viaje,
+        tipo_transporte,
         capacidad,
-        COALESCE(cantidad_pasajeros, 0) AS cantidad_pasajeros, -- 👈 usar SOLO tu columna real
-        COALESCE(hotel_salida, hotel, '') AS hotel_salida,
+        cantidad_pasajeros,
+        hotel_salida,
         zona,
-        ${dateCol} AS fecha_salida,
-        ${timeCol} AS hora_salida,
-        NULL::text AS aerolinea_salida,                   -- en Tours no aplica
-        NULL::text AS vuelo_salida,                       -- en Tours no aplica
-        COALESCE(nombre_tour, tour, '—') AS nombre_tour   -- nombre del tour
+        fecha_salida,
+        hora_salida,
+        '—'::text AS aerolinea_salida,      -- Tours: no aplica → relleno desde el back
+        '—'::text AS vuelo_salida,           -- Tours: no aplica → relleno desde el back
+        COALESCE(nombre_tour, tour) AS nombre_tour  -- columna para Tours
       FROM reservaciones
-      WHERE (UPPER(tipo_servicio) = 'TOURS' OR UPPER(tipo_viaje) = 'TOURS')
+      WHERE (
+        UPPER(tipo_servicio) = 'TOURS'
+        OR UPPER(tipo_viaje) = 'TOURS'
+      )
     `;
-
-    const params = [];
-    const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+    const values = [];
 
     if (fecha) {
-      if (!dateRe.test(fecha)) return res.status(400).json({ error: 'Fecha mal formateada (YYYY-MM-DD)' });
-      console.log('🔍 Filtro por fecha exacta (Tours):', fecha);
-      sql += ` AND ${dateCol} = $1 ORDER BY ${timeCol} ASC`;
-      params.push(fecha);
+      console.log('🔍 Usando búsqueda por fecha exacta (Tours):', fecha);
+      query += ` AND fecha_salida = $1 ORDER BY hora_salida ASC`;
+      values.push(fecha);
     } else if (desde && hasta) {
-      if (!dateRe.test(desde) || !dateRe.test(hasta)) {
-        return res.status(400).json({ error: 'Fechas mal formateadas (YYYY-MM-DD)' });
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      if (!dateRegex.test(desde) || !dateRegex.test(hasta)) {
+        console.warn('⚠️ Formato de fecha inválido en desde/hasta (Tours):', { desde, hasta });
+        return res.status(400).json({ error: 'Fechas mal formateadas' });
       }
-      console.log(`🔍 Filtro por rango (Tours): ${desde} → ${hasta}`);
-      sql += ` AND ${dateCol} BETWEEN $1 AND $2 ORDER BY ${dateCol} ASC, ${timeCol} ASC`;
-      params.push(desde, hasta);
+      console.log(`🔍 Usando búsqueda por rango (Tours): ${desde} → ${hasta}`);
+      query += ` AND fecha_salida BETWEEN $1 AND $2 ORDER BY fecha_salida ASC, hora_salida ASC`;
+      values.push(desde, hasta);
     } else {
-      console.log('🔍 Filtro por fecha actual (Tours): CURRENT_DATE');
-      sql += ` AND ${dateCol} = CURRENT_DATE ORDER BY ${timeCol} ASC`;
+      console.log('🔍 Usando búsqueda por fecha actual (CURRENT_DATE) para salidas Tours');
+      query += ` AND fecha_salida = CURRENT_DATE ORDER BY hora_salida ASC`;
     }
 
-    const result = await pool.query(sql, params);
-    console.log('✅ Salidas Tours encontradas:', result.rows.length);
+    const result = await pool.query(query, values);
+    console.log('✅ Resultados encontrados (salidas TOURS):', result.rows.length);
 
-    return res.json({ datos: result.rows });
+    res.json({ datos: result.rows });
   } catch (error) {
     console.error('❌ Error consultando salidas Tours:', error.message);
-    return res.status(500).json({ error: 'Error al obtener salidas (Tours)' });
+    res.status(500).json({ error: 'Error al obtener salidas (Tours) desde la base de datos' });
   }
 };
 
