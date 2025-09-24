@@ -1,4 +1,4 @@
-//server.js
+//server.js  modificado
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
@@ -94,7 +94,7 @@ app.get('/api/obtener-reserva-tours', obtenerReservaTours);
 app.post('/api/actualizar-datos-tours', actualizarDatosTours);
 app.get('/api/consultar-hoteles', consultarHoteles);
 app.get('/api/salidas', consultarSalidas);
-app.get('/api/exportarExcelSalidasTours', exportarExcelSalidasTours);
+app.get('/api/exportarExcelSalidas', exportarExcelSalidasTours);
 app.get('/', (_req, res) => res.send('API Destinos activa 🎯'));
 
 // 404
