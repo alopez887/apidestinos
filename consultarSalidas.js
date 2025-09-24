@@ -1,3 +1,4 @@
+// consultarSalidas.js
 import pool from './conexion.js';
 
 const consultarSalidas = async (req, res) => {
@@ -18,9 +19,9 @@ const consultarSalidas = async (req, res) => {
         zona,
         fecha_salida,
         hora_salida,
-        '—'::text AS aerolinea_salida,      -- Tours: no aplica → relleno desde el back
-        '—'::text AS vuelo_salida,           -- Tours: no aplica → relleno desde el back
-        COALESCE(nombre_tour, tour) AS nombre_tour  -- columna para Tours
+        '—'::text AS aerolinea_salida,        -- Tours: no aplica
+        '—'::text AS vuelo_salida,             -- Tours: no aplica
+        COALESCE(nombre_tour, '—') AS nombre_tour  -- SIN usar columna "tour"
       FROM reservaciones
       WHERE (
         UPPER(tipo_servicio) = 'TOURS'
@@ -50,10 +51,10 @@ const consultarSalidas = async (req, res) => {
     const result = await pool.query(query, values);
     console.log('✅ Resultados encontrados (salidas TOURS):', result.rows.length);
 
-    res.json({ datos: result.rows });
+    return res.json({ datos: result.rows });
   } catch (error) {
     console.error('❌ Error consultando salidas Tours:', error.message);
-    res.status(500).json({ error: 'Error al obtener salidas (Tours) desde la base de datos' });
+    return res.status(500).json({ error: 'Error al obtener salidas (Tours) desde la base de datos' });
   }
 };
 
