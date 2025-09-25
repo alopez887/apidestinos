@@ -1,36 +1,56 @@
-// buscarReservasTours.js (en apidestinos)
 import pool from './conexion.js';
+
+function iso(d) {
+  if (!d) return null;
+  return String(d).slice(0, 10);
+}
+function okDate(s){ return /^\d{4}-\d{2}-\d{2}$/.test(s || ''); }
 
 export default async function buscarReservasTours(req, res) {
   try {
-    const { desde, hasta } = req.query;
-    const re = /^\d{4}-\d{2}-\d{2}$/;
-    if (!re.test(desde) || !re.test(hasta)) {
-      return res.status(400).json({ ok:false, error:'Fechas mal formateadas' });
+    const desde = iso(req.query.desde);
+    const hasta = iso(req.query.hasta);
+    if (!okDate(desde) || !okDate(hasta)) {
+      return res.status(400).json({ ok:false, error:'Rango de fechas inválido' });
     }
 
-    const sql = `
+    // Ajusta el nombre de tu tabla real de tours:
+    // campos esperados por el front: folio, nombre_cliente, fecha (o fecha_salida),
+    // cantidad_adulto, cantidad_nino, nombre_tour, hotel, zona, tipo_transporte (opcional)
+    const q = `
       SELECT
-        folio,                       -- D-000123
-        'Tours'::text AS tipo_viaje,
+        folio,
         nombre_cliente,
-        NULL::date AS fecha_llegada,
-        fecha::date  AS fecha_salida,
-        COALESCE(cantidad_pasajeros,
-                 COALESCE(cantidad_adulto,0) + COALESCE(cantidad_nino,0),
-                 0) AS cantidad_pasajeros
-      FROM reservaciones
-      WHERE fecha::date BETWEEN $1 AND $2
-        AND (
-          LOWER(TRIM(tipo_servicio)) IN ('tours','tour')
-          OR ( (tipo_servicio IS NULL OR TRIM(tipo_servicio) = '') AND folio LIKE 'D-%' )
-        )
-      ORDER BY fecha DESC, folio DESC
+        fecha,
+        cantidad_adulto,
+        cantidad_nino,
+        nombre_tour,
+        hotel,
+        zona,
+        transporte AS tipo_transporte
+      FROM reservaciones_tours
+      WHERE fecha BETWEEN $1 AND $2
+      ORDER BY fecha ASC, folio ASC
     `;
-    const { rows } = await pool.query(sql, [desde, hasta]);
-    return res.json({ ok:true, reservas: rows });
+    const { rows } = await pool.query(q, [desde, hasta]);
+
+    const reservas = rows.map(r => ({
+      // folios de tours son distintos a los de transporte (D-xxxxx en tu sistema)
+      folio: r.folio || '',
+      tipo_viaje: 'Tours',
+      nombre_cliente: r.nombre_cliente || '',
+      fecha: r.fecha || null,               // tu front lo usa como “F. Sal”
+      cantidad_adulto: r.cantidad_adulto ?? 0,
+      cantidad_nino: r.cantidad_nino ?? 0,
+      nombre_tour: r.nombre_tour || '',     // 👈 Campo clave para tu columna
+      hotel: r.hotel || '',
+      zona: r.zona || '',
+      tipo_transporte: r.tipo_transporte || '' // si lo usas para Excel/tabla
+    }));
+
+    return res.json({ ok:true, servicio:'tours', reservas });
   } catch (e) {
-    console.error('buscarReservasTours err:', e.message);
-    return res.status(500).json({ ok:false, error:'Error interno' });
+    console.error('[buscarReservasTours] ERROR:', e);
+    res.status(500).json({ ok:false, error:'Error interno' });
   }
 }
