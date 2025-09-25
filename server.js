@@ -14,7 +14,7 @@ import consultarHoteles from './consultarHoteles.js';
 import consultarSalidas from './consultarSalidas.js';
 import exportarExcelSalidasTours from './exportarExcelSalidasTours.js';
 import exportarExcelSalidasAmbos from './exportarExcelSalidasAmbos.js';
-import buscarReservas from './buscarReservas.js';
+import buscarReservas from './buscarReservasTours.js';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -98,7 +98,7 @@ app.get('/api/consultar-hoteles', consultarHoteles);
 app.get('/api/salidas', consultarSalidas);
 app.get('/api/exportarExcelSalidas', exportarExcelSalidasTours);
 app.get('/api/exportarExcelSalidasAmbos', exportarExcelSalidasAmbos);
-app.get('/api/buscarreservas', buscarReservas);
+app.get('/api/buscar-reservas-tours', buscarReservasTours);
 app.get('/', (_req, res) => res.send('API Destinos activa 🎯'));
 
 // 404
