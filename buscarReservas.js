@@ -1,90 +1,32 @@
 // buscarReservas.js
-import pool from "./conexion.js";
+import pool from './conexion.js';
 
-// Valida YYYY-MM-DD
-const isYMD = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s);
-
-// "Hoy" (YYYY-MM-DD)
-const hoyYMD = () => {
-  const d = new Date();
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-};
-
-// Log: distribución de tipo_servicio en el rango (diagnóstico)
-async function logDistribucion(desde, hasta) {
-  try {
-    const q = `
-      SELECT LOWER(TRIM(COALESCE(tipo_servicio,''))) AS tipo_norm, COUNT(*) AS c
-      FROM reservaciones
-      WHERE fecha::date BETWEEN $1 AND $2
-      GROUP BY 1
-      ORDER BY 2 DESC
-    `;
-    const { rows } = await pool.query(q, [desde, hasta]);
-    console.log("[buscarReservas][DISTRIB]", rows);
-  } catch (e) {
-    console.log("[buscarReservas][DISTRIB] error:", e.message);
-  }
+function hoyMX() {
+  // YYYY-MM-DD en zona Mazatlán
+  return new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Mazatlan' });
 }
 
-// GET /api/buscarreservas?desde=YYYY-MM-DD&hasta=YYYY-MM-DD&servicio=transporte|actividades|tours|ambos
 export default async function buscarReservas(req, res) {
-  const t0 = Date.now();
-  const hoy = hoyYMD();
-
-  let { desde, hasta, servicio } = req.query;
-  desde = isYMD(desde) ? desde : hoy;
-  hasta = isYMD(hasta) ? hasta : hoy;
-  const svc = (servicio || "transporte").toString().trim().toLowerCase();
-
-  console.log(`[buscarReservas] params => desde=${desde} hasta=${hasta} servicio=${svc}`);
-  await logDistribucion(desde, hasta);
-
   try {
-    // === ACTIVIDADES (tipo_servicio IN ['Actividad','Actividades']) ===
-    if (svc === "actividades" || svc === "actividad") {
-      const sqlA = `
-        SELECT
-          folio,
-          nombre_tour,                         -- Actividad
-          proveedor,                            -- Operador
-          nombre_cliente,
-          fecha::date AS fecha,                 -- Fecha de reservación
-          COALESCE(cantidad_adulto, 0) AS cantidad_adulto,
-          COALESCE(cantidad_nino,   0) AS cantidad_nino
-        FROM reservaciones
-        WHERE fecha::date BETWEEN $1 AND $2
-          AND LOWER(TRIM(tipo_servicio)) IN ('actividad','actividades')
-        ORDER BY fecha DESC, folio DESC
-      `;
-      const { rows, rowCount } = await pool.query(sqlA, [desde, hasta]);
-      console.log(`[buscarReservas][ACTIVIDADES] rowCount=${rowCount} t=${Date.now() - t0}ms`);
-      return res.json({ ok: true, reservas: rows });
+    let { desde, hasta, servicio = 'transporte' } = req.query;
+    const svc = String(servicio || '').toLowerCase().trim();
+
+    // Fechas por defecto (hoy) si no vienen
+    if (!desde) desde = hoyMX();
+    if (!hasta) hasta = hoyMX();
+
+    // Valida formato YYYY-MM-DD
+    const re = /^\d{4}-\d{2}-\d{2}$/;
+    if (!re.test(desde) || !re.test(hasta)) {
+      return res.status(400).json({ ok: false, error: 'Fechas mal formateadas (YYYY-MM-DD)' });
     }
 
-    // === TOURS (tipo_servicio IN ['Tours','Tour']) ===
-    if (svc === "tours" || svc === "tour") {
-      const sqlTours = `
-        SELECT
-          folio,
-          'Tours'::text AS tipo_viaje,
-          nombre_cliente,
-          NULL::date AS fecha_llegada,
-          fecha::date AS fecha_salida,  -- usamos 'fecha' del tour para mostrar en la tabla
-          COALESCE(cantidad_pasajeros, COALESCE(cantidad_adulto,0) + COALESCE(cantidad_nino,0), 0) AS cantidad_pasajeros
-        FROM reservaciones
-        WHERE fecha::date BETWEEN $1 AND $2
-          AND LOWER(TRIM(tipo_servicio)) IN ('tours','tour')
-        ORDER BY fecha DESC, folio DESC
-      `;
-      const { rows, rowCount } = await pool.query(sqlTours, [desde, hasta]);
-      console.log(`[buscarReservas][TOURS] rowCount=${rowCount} t=${Date.now() - t0}ms`);
-      return res.json({ ok: true, reservas: rows });
-    }
+    console.log('📥 buscarReservas:', { desde, hasta, servicio: svc });
 
-    // === TRANSPORTE (tipo_servicio = 'Transportacion') ===
-    if (svc === "transporte") {
+    if (svc === 'transporte') {
+      // Solo Transporte:
+      // - tipo_servicio en ('Transportacion','Transporte')
+      // - O bien tipo_servicio vacío PERO con folio TR-xxxxx (blindaje por prefijo)
       const sqlT = `
         SELECT
           folio,
@@ -96,55 +38,54 @@ export default async function buscarReservas(req, res) {
         FROM reservaciones
         WHERE fecha::date BETWEEN $1 AND $2
           AND (
-            tipo_servicio IS NULL
-            OR TRIM(tipo_servicio) = ''
-            OR LOWER(TRIM(tipo_servicio)) IN ('transportacion','transporte')
+            LOWER(TRIM(tipo_servicio)) IN ('transportacion','transporte')
+            OR ( (tipo_servicio IS NULL OR TRIM(tipo_servicio) = '') AND folio LIKE 'TR-%' )
           )
         ORDER BY fecha DESC, folio DESC
       `;
-      let { rows, rowCount } = await pool.query(sqlT, [desde, hasta]);
-      console.log(`[buscarReservas][TRANSPORTE] rowCount=${rowCount} t=${Date.now() - t0}ms`);
-
-      // Fallback legado (por si hay registros viejos sin tipo_servicio correcto)
-      if (rowCount === 0) {
-        const sqlFallback = `
-          SELECT
-            folio,
-            tipo_viaje,
-            nombre_cliente,
-            fecha_llegada,
-            fecha_salida,
-            cantidad_pasajeros
-          FROM reservaciones
-          WHERE fecha::date BETWEEN $1 AND $2
-            AND NOT (LOWER(TRIM(tipo_servicio)) IN ('actividad','actividades','tours','tour'))
-          ORDER BY fecha DESC, folio DESC
-        `;
-        const r2 = await pool.query(sqlFallback, [desde, hasta]);
-        rows = r2.rows;
-        rowCount = r2.rowCount;
-        console.log(`[buscarReservas][TRANSPORTE][FALLBACK] rowCount=${rowCount}`);
-      }
-
+      const { rows } = await pool.query(sqlT, [desde, hasta]);
+      console.log(`✅ Transporte: ${rows.length} filas`);
       return res.json({ ok: true, reservas: rows });
     }
 
-    // === AMBOS (transporte + actividades) — *igual que tu flujo actual* ===
-    if (svc === "ambos") {
-      const sqlT = `
-        SELECT folio, tipo_viaje, nombre_cliente, fecha_llegada, fecha_salida, cantidad_pasajeros
+    if (svc === 'tours' || svc === 'tour') {
+      // Solo Tours:
+      // - tipo_servicio en ('Tours','Tour')
+      // - O bien tipo_servicio vacío PERO con folio D-xxxxx (blindaje por prefijo)
+      // Normalizamos salida a las columnas del grid de "Transporte" en Reservas (como ya hace tu front):
+      const sqlTours = `
+        SELECT
+          folio,
+          'Tours'::text AS tipo_viaje,
+          nombre_cliente,
+          NULL::date AS fecha_llegada,               -- tours no usan llegada en ese grid
+          fecha::date  AS fecha_salida,
+          COALESCE(cantidad_pasajeros,
+                   COALESCE(cantidad_adulto,0) + COALESCE(cantidad_nino,0),
+                   0) AS cantidad_pasajeros
         FROM reservaciones
         WHERE fecha::date BETWEEN $1 AND $2
           AND (
-            tipo_servicio IS NULL
-            OR TRIM(tipo_servicio) = ''
-            OR LOWER(TRIM(tipo_servicio)) IN ('transportacion','transporte')
+            LOWER(TRIM(tipo_servicio)) IN ('tours','tour')
+            OR ( (tipo_servicio IS NULL OR TRIM(tipo_servicio) = '') AND folio LIKE 'D-%' )
           )
         ORDER BY fecha DESC, folio DESC
       `;
+      const { rows } = await pool.query(sqlTours, [desde, hasta]);
+      console.log(`✅ Tours: ${rows.length} filas`);
+      return res.json({ ok: true, reservas: rows });
+    }
+
+    if (svc === 'actividades' || svc === 'actividad') {
+      // Actividades: tu front usa un render distinto (renderPaginatedTableReservasAct)
+      // y espera: folio, nombre_tour, proveedor, nombre_cliente, fecha, cantidad_adulto, cantidad_nino
       const sqlA = `
         SELECT
-          folio, nombre_tour, proveedor, nombre_cliente, fecha::date AS fecha,
+          folio,
+          nombre_tour,
+          proveedor,
+          nombre_cliente,
+          fecha::date AS fecha,
           COALESCE(cantidad_adulto,0) AS cantidad_adulto,
           COALESCE(cantidad_nino,0)   AS cantidad_nino
         FROM reservaciones
@@ -152,26 +93,17 @@ export default async function buscarReservas(req, res) {
           AND LOWER(TRIM(tipo_servicio)) IN ('actividad','actividades')
         ORDER BY fecha DESC, folio DESC
       `;
-
-      const [rt, ra] = await Promise.all([
-        pool.query(sqlT, [desde, hasta]),
-        pool.query(sqlA, [desde, hasta]),
-      ]);
-
-      console.log(`[buscarReservas][AMBOS] T=${rt.rowCount} A=${ra.rowCount} t=${Date.now() - t0}ms`);
-      return res.json({
-        ok: true,
-        reservas_transporte: rt.rows,
-        reservas_actividades: ra.rows,
-      });
+      const { rows } = await pool.query(sqlA, [desde, hasta]);
+      console.log(`✅ Actividades: ${rows.length} filas`);
+      return res.json({ ok: true, reservas: rows });
     }
 
-    console.log(`[buscarReservas] servicio desconocido="${svc}" -> []`);
+    // Si llega un servicio desconocido, responde vacío pero válido
+    console.warn('⚠️ Servicio no reconocido en buscarReservas:', svc);
     return res.json({ ok: true, reservas: [] });
+
   } catch (err) {
-    console.error("❌ /api/buscarreservas ERROR:", err);
-    return res
-      .status(500)
-      .json({ ok: false, where: "buscarReservas", message: err?.message || "Error al consultar reservaciones" });
+    console.error('❌ Error en buscarReservas:', err.message);
+    return res.status(500).json({ ok: false, error: 'Error interno en buscarReservas' });
   }
 }
