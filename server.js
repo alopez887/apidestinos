@@ -14,7 +14,7 @@ import consultarHoteles from './consultarHoteles.js';
 import consultarSalidas from './consultarSalidas.js';
 import exportarExcelSalidasTours from './exportarExcelSalidasTours.js';
 import exportarExcelSalidasAmbos from './exportarExcelSalidasAmbos.js';
-import buscarReservas from './buscarReservasTours.js';
+import buscarReservasTours from './buscarReservasTours.js';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
