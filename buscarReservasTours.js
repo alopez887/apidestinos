@@ -1,9 +1,10 @@
+// buscarReservasTours.js — SOLO salida; nada de llegada
 import pool from "./conexion.js";
 
-const isYMD = s => /^\d{4}-\d{2}-\d{2}$/.test(s);
+const isYMD = s => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
 const today = () => {
   const d = new Date();
-  const p = n => String(n).padStart(2,"0");
+  const p = n => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
 };
 
@@ -13,40 +14,66 @@ export default async function buscarReservasTours(req, res) {
     if (!isYMD(desde)) desde = today();
     if (!isYMD(hasta)) hasta = today();
 
-    // 🔎 TODO sale de la MISMA tabla `reservaciones`
+    // IMPORTANTe:
+    // - Solo usamos fecha/hora de SALIDA, llegada va en NULL para no mezclar.
+    // - Si fecha está '' o NULL no rompe el casteo.
     const sql = `
-      SELECT
-        folio,
-        'Tours'::text AS tipo_viaje,
-        COALESCE(nombre_cliente,'') AS nombre_cliente,
+      WITH tours AS (
+        SELECT
+          folio,
+          'Tours'::text AS tipo_viaje,
+          COALESCE(nombre_cliente, '') AS nombre_cliente,
 
-        ''::date        AS fecha_llegada,            -- tours no usa llegada
-        fecha::date     AS fecha_salida,             -- campo de tours
+          /* NO usamos llegada en tours */
+          NULL::date  AS fecha_llegada,
+          NULL::text  AS hora_llegada,
 
-        COALESCE(
-          NULLIF((COALESCE(cantidad_adulto,0)+COALESCE(cantidad_nino,0))::int,0),
-          NULLIF(cantidad_pasajeros,0),
-          NULLIF(pasajeros,0),
-          0
-        ) AS cantidad_pasajeros,
+          /* Fecha/hora de salida seguras */
+          CASE
+            WHEN fecha IS NULL OR fecha::text = '' THEN NULL
+            ELSE fecha::date
+          END AS fecha_salida,
+          NULLIF(TRIM(COALESCE(hora, '')), '') AS hora_salida,
 
-        -- ÚNICA columna hotel para la tabla del front
-        COALESCE(NULLIF(TRIM(hotel), ''),
-                 NULLIF(TRIM(hotel_salida), ''),
-                 NULLIF(TRIM(hotel_llegada), ''),
-                 '') AS hotel,
+          COALESCE(
+            NULLIF((COALESCE(cantidad_adulto,0)+COALESCE(cantidad_nino,0))::int,0),
+            NULLIF(cantidad_pasajeros,0),
+            NULLIF(pasajeros,0),
+            0
+          ) AS cantidad_pasajeros,
 
-        COALESCE(nombre_tour,'') AS nombre_tour
-      FROM reservaciones
-      WHERE tipo_servicio = 'Tours'
-        AND fecha::date BETWEEN $1 AND $2
-      ORDER BY fecha::date, folio;
+          /* Hotel único para front */
+          COALESCE(
+            NULLIF(TRIM(COALESCE(hotel, '')), ''),
+            NULLIF(TRIM(COALESCE(hotel_salida, '')), ''),
+            NULLIF(TRIM(COALESCE(hotel_llegada, '')), ''),
+            '---'
+          ) AS hotel,
+
+          COALESCE(NULLIF(TRIM(nombre_tour), ''), '---') AS nombre_tour
+        FROM reservaciones
+        WHERE tipo_servicio = 'Tours'
+      )
+      SELECT *
+      FROM tours
+      WHERE fecha_salida >= $1::date AND fecha_salida <= $2::date
+      ORDER BY fecha_salida NULLS LAST, hora_salida NULLS LAST, folio;
     `;
 
     const { rows } = await pool.query(sql, [desde, hasta]);
-    return res.json({ ok: true, reservas: rows });
+    // Relleno visual: campos vacíos a '---' para que no queden huecos en tabla
+    const neat = rows.map(r => ({
+      ...r,
+      hora_salida: r.hora_salida || '---',
+      hotel: r.hotel || '---',
+      nombre_tour: r.nombre_tour || '---',
+      // llegada siempre '---' por política de tours
+      fecha_llegada: '---',
+      hora_llegada: '---'
+    }));
+    res.json({ ok: true, reservas: neat });
   } catch (err) {
     console.error("[buscarReservasTours] ERROR:", err);
-    return res.status(500).json({ ok:false, error:"Error interno" });
+    res.status(500).json({ ok: false, error: "Error interno" });
   }
 }
