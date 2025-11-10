@@ -1,4 +1,4 @@
-// guardarDestino.js — Tours (zona_id desde hoteles_zona)
+// guardarDestino.js — Tours (zona_id desde hoteles_zona) + idioma + email_reservacion
 import crypto from 'crypto';
 import pool from './conexion.js';
 import { enviarCorreoDestino } from './correoDestino.js';
@@ -12,6 +12,14 @@ function moneyNum(v){
 }
 function genTokenQR(){ return crypto.randomBytes(20).toString('hex'); }
 
+// Normaliza idioma a 'es' | 'en' (por compat con front y headers)
+function mapLang(v){
+  const s = String(v || '').trim().toLowerCase();
+  if (s.startsWith('es')) return 'es';
+  if (s.startsWith('en')) return 'en';
+  return 'es'; // por requerimiento del negocio, preferimos ES si no llega
+}
+
 export default async function guardarDestino(req, res) {
   const datos = req.body || {};
   console.log("📥 Datos recibidos en guardarDestino (Tours):", datos);
@@ -19,6 +27,10 @@ export default async function guardarDestino(req, res) {
   if (!datos.destino || !datos.nombre || !datos.correo) {
     return res.status(400).json({ error: "Faltan datos requeridos (destino, nombre, correo)" });
   }
+
+  // Idioma desde body (idioma / correo_idioma) o header
+  const idiomaHeader = req.headers?.['x-lang'];
+  const IDIOMA = mapLang(firstNonNil(datos.idioma, datos.correo_idioma, idiomaHeader, 'es'));
 
   try {
     // === Folio D-XXXXXX ===
@@ -77,6 +89,7 @@ export default async function guardarDestino(req, res) {
 
     // ===========================
     // INSERT en reservaciones
+    //  (agregamos columna idioma; email_reservacion se actualizará después)
     // ===========================
     await pool.query(`
       INSERT INTO reservaciones
@@ -84,12 +97,12 @@ export default async function guardarDestino(req, res) {
        nombre_cliente, correo_cliente, nota, fecha,
        capacidad, cantidad_pasajeros, hotel_llegada, hotel_salida, zona,
        fecha_salida, hora_salida, precio_servicio, tipo_viaje, total_pago,
-       telefono_cliente, token_qr)
+       telefono_cliente, token_qr, idioma)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,
               NOW() AT TIME ZONE 'America/Mazatlan',
               $9,$10,$11,$12,$13,
               $14,$15,$16,$17,$18,
-              $19,$20)
+              $19,$20,$21)
     `, [
       nuevoFolio,                 // 1  folio
       datos.destino,              // 2  nombre_tour
@@ -110,40 +123,66 @@ export default async function guardarDestino(req, res) {
       tipoViaje,                  // 17 tipo_viaje
       totalNum,                   // 18 total_pago
       telefonoCompleto,           // 19 telefono_cliente
-      tokenQR                     // 20 token_qr
+      tokenQR,                    // 20 token_qr
+      IDIOMA                      // 21 idioma ('es' | 'en')
     ]);
 
-    console.log("✅ Reserva Tours insertada con folio:", nuevoFolio, "zona:", zonaBD || '(null)');
+    console.log("✅ Reserva Tours insertada con folio:", nuevoFolio, "zona:", zonaBD || '(null)', "idioma:", IDIOMA);
 
     // ===========================
-    // Correo (si lo usas)
+    // Correo (pasa idioma)
     // ===========================
-    await enviarCorreoDestino({
-      folio: nuevoFolio,
-      tipo_viaje: tipoViaje,
-      destino: datos.destino,
-      tipo_transporte: datos.transporte,
-      capacidad: datos.capacidad,
-      hotel_llegada: hotelRef,
-      fecha_llegada: datos.fecha,
-      hora_llegada: datos.hora,
-      nombre_cliente: datos.nombre,
-      correo_cliente: datos.correo,
-      telefono_cliente: telefonoCompleto,
-      cantidad_pasajeros: datos.pasajeros,
-      nota: datos.comentarios,
-      total_pago: totalNum,
-      imagenDestino: datos.imagenDestino || '',
-      imagenTransporte: datos.imagenTransporte || '',
-      zona: zonaBD || '',
-      token_qr: tokenQR
-    });
+    let emailSent = false;
+    try {
+      await enviarCorreoDestino({
+        folio: nuevoFolio,
+        tipo_viaje: tipoViaje,
+        destino: datos.destino,
+        tipo_transporte: datos.transporte,
+        capacidad: datos.capacidad,
+        hotel_llegada: hotelRef,
+        fecha_llegada: datos.fecha,
+        hora_llegada: datos.hora,
+        nombre_cliente: datos.nombre,
+        correo_cliente: datos.correo,
+        telefono_cliente: telefonoCompleto,
+        cantidad_pasajeros: datos.pasajeros,
+        nota: datos.comentarios,
+        total_pago: totalNum,
+        imagenDestino: datos.imagenDestino || '',
+        imagenTransporte: datos.imagenTransporte || '',
+        zona: zonaBD || '',
+        token_qr: tokenQR,
+        // 🔹 clave para template ES/EN
+        idioma: IDIOMA
+      });
+      emailSent = true;
+    } catch (e) {
+      console.error('❌ Error al enviar correo (Tours):', e?.message || e);
+      emailSent = false;
+    }
+
+    // ===========================
+    // Marcar email_reservacion
+    // ===========================
+    try {
+      await pool.query(
+        `UPDATE reservaciones
+            SET email_reservacion = $1
+          WHERE folio = $2`,
+        [emailSent ? 'enviado' : 'error', nuevoFolio]
+      );
+    } catch (e) {
+      console.warn('⚠️ No se pudo actualizar email_reservacion:', e?.message || e);
+    }
 
     return res.status(200).json({
       exito: true,
       folio: nuevoFolio,
       token_qr: tokenQR,
-      zona: zonaBD || null
+      zona: zonaBD || null,
+      idioma: IDIOMA,
+      emailSent
     });
 
   } catch (err) {
