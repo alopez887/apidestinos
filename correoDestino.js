@@ -1,4 +1,4 @@
-// correoDestino.js — bilingüe ES/EN + traducción de transporte (Private→Privado, Limousine→Limusina, Sprinter→Sprinter)
+// correoDestino.js — bilingüe ES/EN + traducción de transporte + idempotencia GAS
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -84,24 +84,109 @@ function sanitizeEmails(value) {
   return { valid: Array.from(new Set(valid)), invalid };
 }
 
-function firstNonNil(...vals) { for (const v of vals) if (v !== undefined && v !== null && v !== '') return v; return null; }
-function mapLang(v){
-  const s = String(v || '').trim().toLowerCase();
-  if (s.startsWith('en')) return 'en';
-  if (s.startsWith('es')) return 'es';
-  return 'es'; // default negocio
+function firstNonNil(...vals) {
+  for (const v of vals) if (v !== undefined && v !== null && v !== '') return v;
+  return null;
 }
 
-// Traducción de transporte cuando el correo es en ES
-function localizeTransport(raw, lang){
-  const s = String(raw || '').trim();
-  if (lang === 'es') {
-    if (/^private$/i.test(s))   return 'Privado';
-    if (/^limousine$/i.test(s)) return 'Limusina';
-    if (/^sprinter$/i.test(s))  return 'Sprinter';
+async function postJSON(url, body, timeoutMs) {
+  const ctrl = new AbortController();
+  const id = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: ctrl.signal
+    });
+    const json = await res.json().catch(() => ({}));
+    return { status: res.status, json };
+  } finally {
+    clearTimeout(id);
   }
-  return s; // en inglés o ya español correcto
 }
+
+// ===== Localización =====
+function normLang(v) {
+  const s = String(v || '').toLowerCase();
+  return s.startsWith('es') ? 'es' : 'en';
+}
+
+// Traducción de tipo de transporte cuando el correo va en ES
+function labelTransporte(lang, rawCode) {
+  const code = String(rawCode || '').trim();
+  if (lang === 'es') {
+    const mapES = { Private: 'Privado', Limousine: 'Limusina', Sprinter: 'Sprinter' };
+    return mapES[code] || code;
+  }
+  // EN: devolver tal cual
+  return code;
+}
+
+// Textos ES/EN
+const T_ES = {
+  title:              `${ICO_CHECK} Confirmación de Reservación de Tours`,
+  sectionTitle:       'Información de la Reservación',
+  labels: {
+    Folio: 'Folio',
+    Name: 'Nombre',
+    Email: 'Correo',
+    Phone: 'Teléfono',
+    Destination: 'Destino',
+    Transport: 'Transporte',
+    Capacity: 'Capacidad',
+    TripType: 'Tipo de viaje',
+    Hotel: 'Hotel',
+    Date: 'Fecha',
+    Time: 'Hora',
+    Passengers: 'Pasajeros',
+    Note: 'Nota',
+    Total: 'Total',
+  },
+  recommendationsTitle: `${ICO_WARN} Recomendaciones:`,
+  recommendationsText:  'Por favor, confirma tu reservación con al menos 24 horas de anticipación para evitar inconvenientes.',
+  sentTo:               `${ICO_MAIL} Confirmación enviada a`,
+  subject: (folio) => `Reservación de Destino - Folio ${_fmt(folio)}`,
+  policies: `
+    <div style="margin-top:16px;padding-top:10px;border-top:1px solid #e5e9f0;font-size:13px;color:#555;">
+      <strong>${ICO_PIN} Políticas de cancelación:</strong><br>
+      - Todas las cancelaciones o solicitudes de reembolso están sujetas a una tarifa del 10% del monto total pagado.<br>
+      <strong>- No hay reembolsos por cancelaciones con menos de 24 horas de anticipación o en caso de no presentarse.</strong>
+    </div>
+  `,
+};
+
+const T_EN = {
+  title:              `${ICO_CHECK} Tours Reservation Confirmed`,
+  sectionTitle:       'Reservation Information',
+  labels: {
+    Folio: 'Folio',
+    Name: 'Name',
+    Email: 'Email',
+    Phone: 'Phone',
+    Destination: 'Destination',
+    Transport: 'Transport',
+    Capacity: 'Capacity',
+    TripType: 'Trip Type',
+    Hotel: 'Hotel',
+    Date: 'Date',
+    Time: 'Time',
+    Passengers: 'Passengers',
+    Note: 'Note',
+    Total: 'Total',
+  },
+  recommendationsTitle: `${ICO_WARN} Recommendations:`,
+  recommendationsText:  'Please confirm your reservation at least 24 hours in advance to avoid any inconvenience.',
+  sentTo:               `${ICO_MAIL} Confirmation sent to`,
+  subject: (folio) => `Destination Reservation - Folio ${_fmt(folio)}`,
+  policies: `
+    <div style="margin-top:16px;padding-top:10px;border-top:1px solid #e5e9f0;font-size:13px;color:#555;">
+      <strong>${ICO_PIN} Cancellation Policy:</strong><br>
+      - All cancellations or refund requests are subject to a 10% fee of the total amount paid.<br>
+      <strong>- No refunds will be issued for cancellations made less than 24 hours in advance or in case of no-shows.</strong>
+    </div>
+  `,
+};
 
 // ---------- estilos ----------
 const EMAIL_CSS = `
@@ -124,81 +209,21 @@ async function inlineLogo() {
   return _logoCache;
 }
 
-// ---------- textos ES/EN ----------
-const I18N = {
-  es: {
-    title_ok:        `${ICO_CHECK} Confirmación de Reservación de Tours`,
-    section_title:   'Información de la Reservación',
-    folio:           'Folio',
-    name:            'Nombre',
-    email:           'Correo',
-    phone:           'Teléfono',
-    destination:     'Destino',
-    transport:       'Transporte',
-    capacity:        'Capacidad',
-    trip_type:       'Tipo de viaje',
-    hotel:           'Hotel',
-    date:            'Fecha',
-    time:            'Hora',
-    passengers:      'Pasajeros',
-    total:           'Total',
-    note:            'Nota',
-    sent_to:         'Confirmación enviada a',
-    recommendations: `${ICO_WARN} Recomendaciones:`,
-    recommendations_p: 'Por favor confirma tu reservación al menos 24 horas antes para evitar inconvenientes.',
-    policies_html: `
-      <div style="margin-top:16px;padding-top:10px;border-top:1px solid #e5e9f0;font-size:13px;color:#555;">
-        <strong>${ICO_PIN} Políticas de cancelación:</strong><br>
-        - Todas las cancelaciones o solicitudes de reembolso están sujetas a una comisión del 10% del total pagado.<br>
-        <strong>- No se realizarán reembolsos por cancelaciones con menos de 24 horas de anticipación o por no presentarse.</strong>
-      </div>
-    `,
-    subject: (folio)=> `Confirmación de Reservación de Destino - Folio ${_fmt(folio)}`
-  },
-  en: {
-    title_ok:        `${ICO_CHECK} Tours Reservation Confirmed`,
-    section_title:   'Reservation Information',
-    folio:           'Folio',
-    name:            'Name',
-    email:           'Email',
-    phone:           'Phone',
-    destination:     'Destination',
-    transport:       'Transport',
-    capacity:        'Capacity',
-    trip_type:       'Trip Type',
-    hotel:           'Hotel',
-    date:            'Date',
-    time:            'Time',
-    passengers:      'Passengers',
-    total:           'Total',
-    note:            'Note',
-    sent_to:         'Confirmation sent to',
-    recommendations: `${ICO_WARN} Recommendations:`,
-    recommendations_p: 'Please confirm your reservation at least 24 hours in advance to avoid any inconvenience.',
-    policies_html: `
-      <div style="margin-top:16px;padding-top:10px;border-top:1px solid #e5e9f0;font-size:13px;color:#555;">
-        <strong>${ICO_PIN} Cancellation Policy:</strong><br>
-        - All cancellations or refund requests are subject to a 10% fee of the total amount paid.<br>
-        <strong>- No refunds will be issued for cancellations made less than 24 hours in advance or in case of no-shows.</strong>
-      </div>
-    `,
-    subject: (folio)=> `Destination Reservation Confirmed - Folio ${_fmt(folio)}`
-  }
-};
-
 export async function enviarCorreoDestino(datos = {}) {
   try {
-    if (!GAS_URL || !/^https:\/\/script\.google\.com\/macros\/s\//.test(GAS_URL)) throw new Error('GAS_URL no configurado o inválido');
+    if (!GAS_URL || !/^https:\/\/script\.google\.com\/macros\/s\//.test(GAS_URL)) {
+      throw new Error('GAS_URL no configurado o inválido');
+    }
     if (!GAS_TOKEN) throw new Error('GAS_TOKEN no configurado');
 
     DBG('payload in:', datos);
 
+    // Idioma: si front no manda, default EN
+    const lang = normLang(datos.idioma || datos.lang);
+    const T = (lang === 'es') ? T_ES : T_EN;
+
     const toSan = sanitizeEmails(datos.correo_cliente || datos.to);
     if (!toSan.valid.length) throw new Error('Destinatario inválido (correo_cliente)');
-
-    // Idioma
-    const lang = mapLang(firstNonNil(datos.idioma, datos.correo_idioma, 'es'));
-    const T = I18N[lang] || I18N.es;
 
     // ---------- attachments ----------
     const logo = await inlineLogo();
@@ -231,19 +256,17 @@ export async function enviarCorreoDestino(datos = {}) {
     }
 
     // ---------- datos presentacionales ----------
-    const hotel  = firstNonNil(datos.hotel, datos.hotel_llegada);
-    const fecha  = firstNonNil(datos.fecha, datos.fecha_llegada);
-    const hora   = fmtHora12(firstNonNil(datos.hora, datos.hora_llegada));
-    const totalN = moneyNum(datos.total_pago);
-
-    // Traducción de transporte si procede
-    const transporteTxt = localizeTransport(datos.tipo_transporte, lang);
+    const hotel   = firstNonNil(datos.hotel, datos.hotel_llegada);
+    const fecha   = firstNonNil(datos.fecha, datos.fecha_llegada);
+    const hora    = fmtHora12(firstNonNil(datos.hora, datos.hora_llegada));
+    const totalN  = moneyNum(datos.total_pago);
+    const transpL = labelTransporte(lang, datos.tipo_transporte);
 
     const totalH = totalN != null
-      ? `<p style="margin:2px 0;line-height:1.35;"><strong>${T.total}:</strong> $${totalN.toFixed(2)} USD</p>`
+      ? `<p style="margin:2px 0;line-height:1.35;"><strong>${T.labels.Total}:</strong> $${totalN.toFixed(2)} USD</p>`
       : '';
 
-    // ---------- HTML bilingüe ----------
+    // ---------- HTML (bilingüe) ----------
     const html = `
       ${EMAIL_CSS}
       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" class="body-cts">
@@ -255,7 +278,7 @@ export async function enviarCorreoDestino(datos = {}) {
                   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0 0 8px 0;">
                     <tr>
                       <td align="left" style="vertical-align:middle;">
-                        <h2 style="color:green;margin:0;">${T.title_ok}</h2>
+                        <h2 style="color:green;margin:0;">${T.title}</h2>
                       </td>
                       <td align="right" style="vertical-align:middle;">
                         <img src="cid:${logoCid}" width="180" class="logoimg" alt="Logo" />
@@ -263,23 +286,23 @@ export async function enviarCorreoDestino(datos = {}) {
                     </tr>
                   </table>
 
-                  <p class="section-title" style="margin:12px 0 6px;"><strong>${T.section_title}</strong></p>
+                  <p class="section-title" style="margin:12px 0 6px;"><strong>${T.sectionTitle}</strong></p>
                   <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
                     <tr><td style="font-size:14px;color:#222;">
-                      <p style="margin:2px 0;line-height:1.35;"><strong>${T.folio}:</strong> ${_fmt(datos.folio)}</p>
-                      <p style="margin:2px 0;line-height:1.35;"><strong>${T.name}:</strong> ${_fmt(datos.nombre_cliente || datos.nombre)}</p>
-                      ${datos.correo_cliente ? `<p style="margin:2px 0;line-height:1.35;"><strong>${T.email}:</strong> ${datos.correo_cliente}</p>` : ``}
-                      ${datos.telefono_cliente ? `<p style="margin:2px 0;line-height:1.35;"><strong>${T.phone}:</strong> ${datos.telefono_cliente}</p>` : ``}
-                      ${datos.destino ? `<p style="margin:2px 0;line-height:1.35;"><strong>${T.destination}:</strong> ${datos.destino}</p>` : ``}
-                      ${datos.tipo_transporte ? `<p style="margin:2px 0;line-height:1.35;"><strong>${T.transport}:</strong> ${transporteTxt}</p>` : ``}
-                      ${datos.capacidad ? `<p style="margin:2px 0;line-height:1.35;"><strong>${T.capacity}:</strong> ${datos.capacidad}</p>` : ``}
-                      ${datos.tipo_viaje ? `<p style="margin:2px 0;line-height:1.35;"><strong>${T.trip_type}:</strong> ${datos.tipo_viaje}</p>` : ``}
-                      ${hotel ? `<p style="margin:2px 0;line-height:1.35;"><strong>${T.hotel}:</strong> ${hotel}</p>` : ``}
-                      ${fecha ? `<p style="margin:2px 0;line-height:1.35;"><strong>${T.date}:</strong> ${fmtDMY(fecha)}</p>` : ``}
-                      ${hora  ? `<p style="margin:2px 0;line-height:1.35;"><strong>${T.time}:</strong> ${hora}</p>` : ``}
-                      ${datos.cantidad_pasajeros ? `<p style="margin:2px 0;line-height:1.35;"><strong>${T.passengers}:</strong> ${datos.cantidad_pasajeros}</p>` : ``}
+                      <p style="margin:2px 0;line-height:1.35;"><strong>${T.labels.Folio}:</strong> ${_fmt(datos.folio)}</p>
+                      <p style="margin:2px 0;line-height:1.35;"><strong>${T.labels.Name}:</strong> ${_fmt(datos.nombre_cliente || datos.nombre)}</p>
+                      ${datos.correo_cliente ? `<p style="margin:2px 0;line-height:1.35;"><strong>${T.labels.Email}:</strong> ${datos.correo_cliente}</p>` : ``}
+                      ${datos.telefono_cliente ? `<p style="margin:2px 0;line-height:1.35;"><strong>${T.labels.Phone}:</strong> ${datos.telefono_cliente}</p>` : ``}
+                      ${datos.destino ? `<p style="margin:2px 0;line-height:1.35;"><strong>${T.labels.Destination}:</strong> ${datos.destino}</p>` : ``}
+                      ${datos.tipo_transporte ? `<p style="margin:2px 0;line-height:1.35;"><strong>${T.labels.Transport}:</strong> ${transpL}</p>` : ``}
+                      ${datos.capacidad ? `<p style="margin:2px 0;line-height:1.35;"><strong>${T.labels.Capacity}:</strong> ${datos.capacidad}</p>` : ``}
+                      ${datos.tipo_viaje ? `<p style="margin:2px 0;line-height:1.35;"><strong>${T.labels.TripType}:</strong> ${datos.tipo_viaje}</p>` : ``}
+                      ${hotel ? `<p style="margin:2px 0;line-height:1.35;"><strong>${T.labels.Hotel}:</strong> ${hotel}</p>` : ``}
+                      ${fecha ? `<p style="margin:2px 0;line-height:1.35;"><strong>${T.labels.Date}:</strong> ${fmtDMY(fecha)}</p>` : ``}
+                      ${hora  ? `<p style="margin:2px 0;line-height:1.35;"><strong>${T.labels.Time}:</strong> ${hora}</p>` : ``}
+                      ${datos.cantidad_pasajeros ? `<p style="margin:2px 0;line-height:1.35;"><strong>${T.labels.Passengers}:</strong> ${datos.cantidad_pasajeros}</p>` : ``}
                       ${totalH}
-                      ${datos.nota ? `<p style="margin:8px 0 0;line-height:1.45;"><strong>${T.note}:</strong> ${datos.nota}</p>` : ``}
+                      ${datos.nota ? `<p style="margin:8px 0 0;line-height:1.45;"><strong>${T.labels.Note}:</strong> ${datos.nota}</p>` : ``}
                     </td></tr>
                   </table>
 
@@ -307,15 +330,15 @@ export async function enviarCorreoDestino(datos = {}) {
                   <div class="divider" style="border-top:1px solid #e5e9f0;margin:12px 0;"></div>
 
                   <div style="background:#fff8e6;border-left:6px solid #ffa500;padding:10px 14px;border-radius:6px;">
-                    <strong style="color:#b00000;">${T.recommendations}</strong>
-                    <span style="color:#333;"> ${T.recommendations_p}</span>
+                    <strong style="color:#b00000;">${T.recommendationsTitle}</strong>
+                    <span style="color:#333;"> ${T.recommendationsText}</span>
                   </div>
 
                   <p style="margin-top:12px;font-size:14px;color:#555;">
-                    ${ICO_MAIL} ${T.sent_to}: <a href="mailto:${_fmt(datos.correo_cliente)}">${_fmt(datos.correo_cliente)}</a>
+                    ${T.sentTo}: <a href="mailto:${_fmt(datos.correo_cliente)}">${_fmt(datos.correo_cliente)}</a>
                   </p>
 
-                  ${T.policies_html}
+                  ${T.policies}
                 </td>
               </tr>
             </table>
@@ -341,7 +364,10 @@ export async function enviarCorreoDestino(datos = {}) {
       subject,
       html,
       fromName: process.env.EMAIL_FROMNAME || 'Cabo Travel Solutions',
-      attachments
+      attachments,
+      // === Idempotencia en GAS (usa folio/clave) ===
+      folio: datos.folio || undefined,
+      idempotencyKey: (datos.folio || datos.token_qr || undefined),
     };
 
     DBG('POST → GAS', { to: toSan.valid, subject, lang });
