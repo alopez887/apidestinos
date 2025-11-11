@@ -146,7 +146,7 @@ const T_ES = {
   recommendationsTitle: `${ICO_WARN} Recomendaciones:`,
   recommendationsText:  'Por favor, confirma tu reservación con al menos 24 horas de anticipación para evitar inconvenientes.',
   sentTo:               `${ICO_MAIL} Confirmación enviada a`,
-  subject: (folio) => `Reservación de Destino - Folio ${_fmt(folio)}`,
+  subject: (folio) => `Reservación de Tours - Folio ${_fmt(folio)}`,
   policies: `
     <div style="margin-top:16px;padding-top:10px;border-top:1px solid #e5e9f0;font-size:13px;color:#555;">
       <strong>${ICO_PIN} Políticas de cancelación:</strong><br>
@@ -178,7 +178,7 @@ const T_EN = {
   recommendationsTitle: `${ICO_WARN} Recommendations:`,
   recommendationsText:  'Please confirm your reservation at least 24 hours in advance to avoid any inconvenience.',
   sentTo:               `${ICO_MAIL} Confirmation sent to`,
-  subject: (folio) => `Destination Reservation - Folio ${_fmt(folio)}`,
+  subject: (folio) => `Tours Reservation - Folio ${_fmt(folio)}`,
   policies: `
     <div style="margin-top:16px;padding-top:10px;border-top:1px solid #e5e9f0;font-size:13px;color:#555;">
       <strong>${ICO_PIN} Cancellation Policy:</strong><br>
