@@ -1,4 +1,22 @@
 import pool from './conexion.js';
+import { DateTime } from 'luxon';
+
+function normalizarFechaMazatlan(fecha) {
+  if (!fecha) return null;
+
+  // Intentamos primero como ISO, luego como SQL (YYYY-MM-DD HH:mm:ss)
+  let dt = DateTime.fromISO(fecha);
+  if (!dt.isValid) {
+    dt = DateTime.fromSQL(fecha);
+  }
+
+  if (!dt.isValid) {
+    // Si aun así no es válido, regresamos tal cual para no reventar el flujo
+    return fecha;
+  }
+
+  return dt.setZone('America/Mazatlan').toISO();
+}
 
 export default async function actualizarDatosTours(req, res) {
   try {
@@ -58,27 +76,34 @@ export default async function actualizarDatosTours(req, res) {
       // Manejo de fechas y estatus de SALIDA solamente
       let salidaStatusChanged = false;
       if (fecha_inicioviaje) {
+        const fechaInicioSalida = normalizarFechaMazatlan(fecha_inicioviaje);
         sets.push(`fecha_inicioviajesalida = $${i++}`);
-        values.push(fecha_inicioviaje);
+        values.push(fechaInicioSalida);
         sets.push(`estatus_viajesalida = 'asignado'`);
         salidaStatusChanged = true;
       }
       if (fecha_finalviaje) {
+        const fechaFinSalida = normalizarFechaMazatlan(fecha_finalviaje);
         sets.push(`fecha_finalviajesalida = $${i++}`);
-        values.push(fecha_finalviaje);
+        values.push(fechaFinSalida);
         sets.push(`estatus_viajesalida = 'finalizado'`);
         salidaStatusChanged = true;
 
         // Al finalizar SALIDA, preparamos LLEGADA:
         // - clonamos (si están vacíos) datos de *_salida a *_llegada
-        // - abrimos llegada en 'asignado' e inicializamos fecha_inicioviajellegada si no existe
+        // - abrimos llegada en 'asignado'
+        // - inicializamos fecha_inicioviajellegada con hora de Mazatlán si está vacía
         sets.push(`representante_llegada = COALESCE(representante_llegada, representante_salida)`);
         sets.push(`choferllegada = COALESCE(choferllegada, chofersalida)`);
         sets.push(`numero_unidadllegada = COALESCE(numero_unidadllegada, numero_unidadsalida)`);
         sets.push(`cantidad_pasajerosokllegada = COALESCE(cantidad_pasajerosokllegada, cantidad_pasajerosoksalida)`);
         sets.push(`comentariosllegada = COALESCE(comentariosllegada, comentariossalida)`);
         sets.push(`estatus_viajellegada = 'asignado'`);
-        sets.push(`fecha_inicioviajellegada = COALESCE(fecha_inicioviajellegada, NOW())`);
+
+        // ⏱️ Aquí corregimos el problema: usamos hora Mazatlán desde Node, no NOW() del servidor/DB
+        const fechaInicioLlegadaAuto = DateTime.now().setZone('America/Mazatlan').toISO();
+        sets.push(`fecha_inicioviajellegada = COALESCE(fecha_inicioviajellegada, $${i++})`);
+        values.push(fechaInicioLlegadaAuto);
       }
 
       if (!salidaStatusChanged && sets.length === 0) {
@@ -95,13 +120,15 @@ export default async function actualizarDatosTours(req, res) {
         values.push(comentarios);
       }
       if (fecha_inicioviaje) {
+        const fechaInicioLlegada = normalizarFechaMazatlan(fecha_inicioviaje);
         sets.push(`fecha_inicioviajellegada = $${i++}`);
-        values.push(fecha_inicioviaje);
+        values.push(fechaInicioLlegada);
         sets.push(`estatus_viajellegada = 'asignado'`);
       }
       if (fecha_finalviaje) {
+        const fechaFinLlegada = normalizarFechaMazatlan(fecha_finalviaje);
         sets.push(`fecha_finalviajellegada = $${i++}`);
-        values.push(fecha_finalviaje);
+        values.push(fechaFinLlegada);
         sets.push(`estatus_viajellegada = 'finalizado'`);
       }
 
