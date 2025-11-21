@@ -20,6 +20,14 @@ function mapLang(v){
   return 'es'; // por requerimiento del negocio, preferimos ES si no llega
 }
 
+// Normaliza moneda a 'USD' | 'MXN' (default: 'USD')
+function mapCurrency(v){
+  const s = String(v || '').trim().toUpperCase();
+  if (s === 'MXN') return 'MXN';
+  if (s === 'USD') return 'USD';
+  return 'USD';
+}
+
 export default async function guardarDestino(req, res) {
   const datos = req.body || {};
   console.log("📥 Datos recibidos en guardarDestino (Tours):", datos);
@@ -31,6 +39,9 @@ export default async function guardarDestino(req, res) {
   // Idioma desde body (idioma / correo_idioma) o header
   const idiomaHeader = req.headers?.['x-lang'];
   const IDIOMA = mapLang(firstNonNil(datos.idioma, datos.correo_idioma, idiomaHeader, 'es'));
+
+  // Moneda desde el front (USD/MXN) — viene del iframeTours
+  const MONEDA = mapCurrency(firstNonNil(datos.moneda, 'USD'));
 
   try {
     // === Folio D-XXXXXX ===
@@ -89,7 +100,7 @@ export default async function guardarDestino(req, res) {
 
     // ===========================
     // INSERT en reservaciones
-    //  (agregamos columna idioma; email_reservacion se actualizará después)
+    //  (agregamos columna idioma y moneda; email_reservacion se actualizará después)
     // ===========================
     await pool.query(`
       INSERT INTO reservaciones
@@ -97,12 +108,12 @@ export default async function guardarDestino(req, res) {
        nombre_cliente, correo_cliente, nota, fecha,
        capacidad, cantidad_pasajeros, hotel_llegada, hotel_salida, zona,
        fecha_salida, hora_salida, precio_servicio, tipo_viaje, total_pago,
-       telefono_cliente, token_qr, idioma)
+       telefono_cliente, token_qr, idioma, moneda)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,
               NOW() AT TIME ZONE 'America/Mazatlan',
               $9,$10,$11,$12,$13,
               $14,$15,$16,$17,$18,
-              $19,$20,$21)
+              $19,$20,$21,$22)
     `, [
       nuevoFolio,                 // 1  folio
       datos.destino,              // 2  nombre_tour
@@ -124,13 +135,20 @@ export default async function guardarDestino(req, res) {
       totalNum,                   // 18 total_pago
       telefonoCompleto,           // 19 telefono_cliente
       tokenQR,                    // 20 token_qr
-      IDIOMA                      // 21 idioma ('es' | 'en')
+      IDIOMA,                     // 21 idioma ('es' | 'en')
+      MONEDA                      // 22 moneda ('USD' | 'MXN')
     ]);
 
-    console.log("✅ Reserva Tours insertada con folio:", nuevoFolio, "zona:", zonaBD || '(null)', "idioma:", IDIOMA);
+    console.log(
+      "✅ Reserva Tours insertada con folio:",
+      nuevoFolio,
+      "zona:", zonaBD || '(null)',
+      "idioma:", IDIOMA,
+      "moneda:", MONEDA
+    );
 
     // ===========================
-    // Correo (pasa idioma)
+    // Correo (pasa idioma + moneda)
     // ===========================
     let emailSent = false;
     try {
@@ -153,8 +171,9 @@ export default async function guardarDestino(req, res) {
         imagenTransporte: datos.imagenTransporte || '',
         zona: zonaBD || '',
         token_qr: tokenQR,
-        // 🔹 clave para template ES/EN
-        idioma: IDIOMA
+        // 🔹 claves para el template
+        idioma: IDIOMA,
+        moneda: MONEDA
       });
       emailSent = true;
     } catch (e) {
@@ -182,6 +201,7 @@ export default async function guardarDestino(req, res) {
       token_qr: tokenQR,
       zona: zonaBD || null,
       idioma: IDIOMA,
+      moneda: MONEDA,
       emailSent
     });
 
