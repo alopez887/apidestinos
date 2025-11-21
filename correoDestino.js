@@ -50,6 +50,18 @@ function moneyNum(v) {
   return Number.isFinite(n) ? n : null;
 }
 
+// 🔹 formateo con miles y 2 decimales
+function fmtMoney(num) {
+  try {
+    return Number(num || 0).toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+  } catch {
+    return Number(num || 0).toFixed(2);
+  }
+}
+
 function fmtDMY(dateLike) {
   try {
     const d = new Date(dateLike);
@@ -262,8 +274,14 @@ export async function enviarCorreoDestino(datos = {}) {
     const totalN  = moneyNum(datos.total_pago);
     const transpL = labelTransporte(lang, datos.tipo_transporte);
 
+    // 🔹 moneda desde backend (guardarDestino) -> 'USD' | 'MXN', default 'USD'
+    const moneda = (() => {
+      const m = String(datos.moneda || 'USD').toUpperCase();
+      return (m === 'MXN') ? 'MXN' : 'USD';
+    })();
+
     const totalH = totalN != null
-      ? `<p style="margin:2px 0;line-height:1.35;"><strong>${T.labels.Total}:</strong> $${totalN.toFixed(2)} USD</p>`
+      ? `<p style="margin:2px 0;line-height:1.35;"><strong>${T.labels.Total}:</strong> $${fmtMoney(totalN)} ${moneda}</p>`
       : '';
 
     // ---------- HTML (bilingüe) ----------
@@ -370,7 +388,7 @@ export async function enviarCorreoDestino(datos = {}) {
       idempotencyKey: (datos.folio || datos.token_qr || undefined),
     };
 
-    DBG('POST → GAS', { to: toSan.valid, subject, lang });
+    DBG('POST → GAS', { to: toSan.valid, subject, lang, moneda });
     const { status, json } = await postJSON(GAS_URL, payload, GAS_TIMEOUT_MS);
     if (!json || json.ok !== true) throw new Error(`Error GAS: ${(json && json.error) || status}`);
 
@@ -383,3 +401,4 @@ export async function enviarCorreoDestino(datos = {}) {
 }
 
 export default enviarCorreoDestino;
+
