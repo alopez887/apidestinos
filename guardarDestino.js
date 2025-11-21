@@ -43,6 +43,17 @@ export default async function guardarDestino(req, res) {
   // Moneda desde el front (USD/MXN) — viene del iframeTours
   const MONEDA = mapCurrency(firstNonNil(datos.moneda, 'USD'));
 
+  // 🔹 IMÁGENES: imagenDestino / imagenTransporte → columna "imagen"
+  const imagenDestino    = String(datos.imagenDestino || '').trim();
+  const imagenTransporte = String(datos.imagenTransporte || '').trim();
+  let imagenDB = '';
+
+  if (imagenDestino && imagenTransporte && imagenDestino !== imagenTransporte) {
+    imagenDB = `${imagenDestino}|${imagenTransporte}`;
+  } else {
+    imagenDB = imagenDestino || imagenTransporte || '';
+  }
+
   try {
     // === Folio D-XXXXXX ===
     const resultFolio = await pool.query(`
@@ -100,7 +111,7 @@ export default async function guardarDestino(req, res) {
 
     // ===========================
     // INSERT en reservaciones
-    //  (agregamos columna idioma y moneda; email_reservacion se actualizará después)
+    //  (agregamos columna idioma, moneda e imagen; email_reservacion se actualizará después)
     // ===========================
     await pool.query(`
       INSERT INTO reservaciones
@@ -108,12 +119,12 @@ export default async function guardarDestino(req, res) {
        nombre_cliente, correo_cliente, nota, fecha,
        capacidad, cantidad_pasajeros, hotel_llegada, hotel_salida, zona,
        fecha_salida, hora_salida, precio_servicio, tipo_viaje, total_pago,
-       telefono_cliente, token_qr, idioma, moneda)
+       telefono_cliente, token_qr, idioma, moneda, imagen)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,
               NOW() AT TIME ZONE 'America/Mazatlan',
               $9,$10,$11,$12,$13,
               $14,$15,$16,$17,$18,
-              $19,$20,$21,$22)
+              $19,$20,$21,$22,$23)
     `, [
       nuevoFolio,                 // 1  folio
       datos.destino,              // 2  nombre_tour
@@ -136,7 +147,8 @@ export default async function guardarDestino(req, res) {
       telefonoCompleto,           // 19 telefono_cliente
       tokenQR,                    // 20 token_qr
       IDIOMA,                     // 21 idioma ('es' | 'en')
-      MONEDA                      // 22 moneda ('USD' | 'MXN')
+      MONEDA,                     // 22 moneda ('USD' | 'MXN')
+      imagenDB                    // 23 imagen (1 o 2 URLs separadas por '|')
     ]);
 
     console.log(
@@ -144,11 +156,12 @@ export default async function guardarDestino(req, res) {
       nuevoFolio,
       "zona:", zonaBD || '(null)',
       "idioma:", IDIOMA,
-      "moneda:", MONEDA
+      "moneda:", MONEDA,
+      "imagen:", imagenDB ? 'sí' : 'no'
     );
 
     // ===========================
-    // Correo (pasa idioma + moneda)
+    // Correo (pasa idioma + moneda + imágenes)
     // ===========================
     let emailSent = false;
     try {
@@ -167,8 +180,8 @@ export default async function guardarDestino(req, res) {
         cantidad_pasajeros: datos.pasajeros,
         nota: datos.comentarios,
         total_pago: totalNum,
-        imagenDestino: datos.imagenDestino || '',
-        imagenTransporte: datos.imagenTransporte || '',
+        imagenDestino: imagenDestino || '',
+        imagenTransporte: imagenTransporte || '',
         zona: zonaBD || '',
         token_qr: tokenQR,
         // 🔹 claves para el template
