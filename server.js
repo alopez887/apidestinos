@@ -16,6 +16,7 @@ import exportarExcelSalidasTours from './exportarExcelSalidasTours.js';
 import exportarExcelSalidasAmbos from './exportarExcelSalidasAmbos.js';
 import buscarReservasTours from './buscarReservasTours.js';
 import exportarExcelReservasTours from './exportarExcelReservasTours.js';
+import exportarExcelReservasAmbos from './exportarExcelReservasAmbos.js';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -101,6 +102,7 @@ app.get('/api/exportarExcelSalidas', exportarExcelSalidasTours);
 app.get('/api/exportarExcelSalidasAmbos', exportarExcelSalidasAmbos);
 app.get('/api/buscar-reservas-tours', buscarReservasTours);
 app.get('/api/exportarExcelReservasTours', exportarExcelReservasTours);
+app.get('/api/exportarExcelReservasAmbos', exportarExcelReservasAmbos);
 app.get('/', (_req, res) => res.send('API Destinos activa 🎯'));
 
 // 404
