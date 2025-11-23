@@ -11,7 +11,7 @@ export default async function buscarReservasTours(req, res) {
     }
 
     // Tomamos TODO de la MISMA tabla 'reservaciones'
-    // Solo Tours, sólo por fecha de SALIDA; nada de llegada.
+    // Solo Tours. Filtramos por **fecha de registro** (columna fecha), NO por fecha_salida.
     const sql = `
       SELECT
         folio,
@@ -22,7 +22,7 @@ export default async function buscarReservasTours(req, res) {
         -- La UI no usa llegada para tours: forzamos NULL
         NULL::date                                               AS fecha_llegada,
 
-        -- Salida (las únicas fechas/horas que nos interesan en tours)
+        -- Salida (solo se muestra; el filtro es por fecha de registro)
         fecha_salida,
         hora_salida,
 
@@ -32,7 +32,7 @@ export default async function buscarReservasTours(req, res) {
           ELSE COALESCE(hotel_llegada, '')
         END                                                     AS hotel,
 
-        -- Nombre del tour (para transporte puede venir vacío)
+        -- Nombre del tour
         COALESCE(NULLIF(nombre_tour, ''), '')                    AS nombre_tour,
 
         -- Pax: si no hay cantidad_pasajeros, usar adultos+niños (si existen)
@@ -45,7 +45,8 @@ export default async function buscarReservasTours(req, res) {
       WHERE
         -- Detectamos tours desde los datos que SÍ tienes
         (tipo_servicio ILIKE 'tour%' OR tipo_viaje ILIKE 'tour%')
-        AND fecha_salida BETWEEN $1 AND $2
+        -- 🔹 FECHA DE REGISTRO (columna fecha), casteada a date
+        AND fecha::date BETWEEN $1::date AND $2::date
       ORDER BY fecha_salida ASC, hora_salida ASC NULLS LAST, folio ASC
     `;
 
