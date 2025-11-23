@@ -12,6 +12,12 @@ function moneyNum(v){
 }
 function genTokenQR(){ return crypto.randomBytes(20).toString('hex'); }
 
+// 🔹 Helper: redondear a 2 decimales (igual que en transporte / roundtrip)
+function round2(v){
+  const n = Number(v) || 0;
+  return Math.round(n * 100) / 100;
+}
+
 // Normaliza idioma a 'es' | 'en' (por compat con front y headers)
 function mapLang(v){
   const s = String(v || '').trim().toLowerCase();
@@ -74,11 +80,16 @@ export default async function guardarDestino(req, res) {
     const tokenQR = genTokenQR();
     const telefonoCompleto = `${datos.codigoPais || ''}${datos.telefono || ''}`.trim();
 
+    // 🔹 TOTAL: normalizar + redondear a 2 decimales y conservar 2 dígitos
     const totalRaw = firstNonNil(datos.total, datos.total_pago, datos.precio, datos.monto);
-    const totalNum = moneyNum(totalRaw);
-    if (totalNum == null) {
+    const totalNum0 = moneyNum(totalRaw);
+    if (totalNum0 == null) {
       return res.status(400).json({ error: "total_pago inválido", recibido: totalRaw });
     }
+
+    const totalNumRounded = round2(totalNum0);          // ej. 4388.9 → 4388.9 (num), 4388.94 → 4388.94
+    const total_pago      = Number(totalNumRounded.toFixed(2)); // num lógico con 2 decimales
+    const total_pago_str  = totalNumRounded.toFixed(2); // "4388.90", "250.50", etc. (siempre 2 dígitos)
 
     const tipoServicio = 'Tours';
     const tipoViaje    = firstNonNil(datos.tipo_viaje, 'Tours');
@@ -111,7 +122,7 @@ export default async function guardarDestino(req, res) {
 
     // ===========================
     // INSERT en reservaciones
-    //  (agregamos columna idioma, moneda e imagen; email_reservacion se actualizará después)
+    //  (idioma, moneda, imagen; total_pago como string con 2 decimales)
     // ===========================
     await pool.query(`
       INSERT INTO reservaciones
@@ -141,9 +152,9 @@ export default async function guardarDestino(req, res) {
       zonaBD || null,             // 13 zona  ✅ (zona_id)
       datos.fecha,                // 14 fecha_salida
       datos.hora,                 // 15 hora_salida
-      totalNum,                   // 16 precio_servicio
+      total_pago,                 // 16 precio_servicio (num redondeado)
       tipoViaje,                  // 17 tipo_viaje
-      totalNum,                   // 18 total_pago
+      total_pago_str,             // 18 total_pago (string "XXXX.XX" con 2 decimales)
       telefonoCompleto,           // 19 telefono_cliente
       tokenQR,                    // 20 token_qr
       IDIOMA,                     // 21 idioma ('es' | 'en')
@@ -157,6 +168,7 @@ export default async function guardarDestino(req, res) {
       "zona:", zonaBD || '(null)',
       "idioma:", IDIOMA,
       "moneda:", MONEDA,
+      "total_pago_str:", total_pago_str,
       "imagen:", imagenDB ? 'sí' : 'no'
     );
 
@@ -179,7 +191,7 @@ export default async function guardarDestino(req, res) {
         telefono_cliente: telefonoCompleto,
         cantidad_pasajeros: datos.pasajeros,
         nota: datos.comentarios,
-        total_pago: totalNum,
+        total_pago: total_pago,          // num; en la plantilla lo formateas a 2 decimales
         imagenDestino: imagenDestino || '',
         imagenTransporte: imagenTransporte || '',
         zona: zonaBD || '',
@@ -215,6 +227,7 @@ export default async function guardarDestino(req, res) {
       zona: zonaBD || null,
       idioma: IDIOMA,
       moneda: MONEDA,
+      total_pago: total_pago_str,   // por si lo quieres ver desde el front también con 2 dígitos
       emailSent
     });
 
