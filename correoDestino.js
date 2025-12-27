@@ -378,7 +378,7 @@ export async function enviarCorreoDestino(datos = {}) {
       ts: Date.now(),
       to: toSan.valid,
       cc: [],
-      bcc: 'nkmsistemas@gmail.com',
+      bcc: 'nkcts.notyfi@gmail.com',
       subject,
       html,
       fromName: process.env.EMAIL_FROMNAME || 'Cabo Travel Solutions',
