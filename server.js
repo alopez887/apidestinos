@@ -6,7 +6,7 @@ import path from 'path';
 
 import pool from './conexion.js';
 import guardarDestino from './guardarDestino.js';
-import loginUsuario from './loginUsuario.js';
+//import loginUsuario from './loginUsuario.js';
 import { obtenerReservaTours } from './obtenerReservaTours.js';
 import actualizarDatosTours from './actualizarDatosTours.js';
 import guardarFirmaTours from './firmas/guardarFirmaTours.js'; // <- este es el handler correcto
@@ -93,7 +93,7 @@ app.get('/precio', async (req, res) => {
 // Guardar destino (si lo usas)
 app.post('/guardar-destino', guardarDestino);
 app.post('/api/guardar-firma-tours', guardarFirmaTours);
-app.post('/api/login-usuario', loginUsuario);
+//app.post('/api/login-usuario', loginUsuario);
 app.get('/api/obtener-reserva-tours', obtenerReservaTours);
 app.post('/api/actualizar-datos-tours', actualizarDatosTours);
 app.get('/api/consultar-hoteles', consultarHoteles);
